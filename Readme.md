@@ -9,13 +9,14 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
 - **Render Live App:** https://transcribeflow-ai.onrender.com/
 
-> Render hosts the real Flask backend. The included `render.yaml` uses Docker, installs FFmpeg, starts Gunicorn, and defaults to SQLite demo mode so the app can boot without a separate MySQL service.
+> Render hosts the real Flask backend in lightweight demo mode. The included `render.yaml` uses Docker, starts Gunicorn, and defaults to SQLite + demo transcription so the free instance does not crash from Whisper/Torch memory usage.
 
 ## Deploy Live on Render
 
 This repository includes:
 
-- `Dockerfile` — installs Python dependencies and FFmpeg
+- `Dockerfile` — starts the lightweight Render web service
+- `requirements-render.txt` — lightweight Render dependencies without Torch/Whisper
 - `render.yaml` — Render Blueprint for one-click deployment
 - `/health` — health-check endpoint for Render
 - `DB_BACKEND=sqlite` — demo database mode for live hosting without MySQL
@@ -39,7 +40,7 @@ https://transcribeflow-ai.onrender.com/
 
 Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
 
-The Render free service uses `TRANSCRIPTION_BACKEND=demo` to prevent memory-limit restarts. For full Whisper transcription, run locally with the default `TRANSCRIPTION_BACKEND=whisper` or upgrade the Render instance and change the environment variable to `whisper`.
+The Render free service uses `TRANSCRIPTION_BACKEND=demo` and `requirements-render.txt` to prevent memory-limit restarts. For full Whisper transcription, run locally with the default `TRANSCRIPTION_BACKEND=whisper`, or upgrade Render and switch Docker back to `requirements.txt`.
 
 ## Interview-Ready Features
 

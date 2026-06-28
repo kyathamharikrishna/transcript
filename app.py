@@ -1,4 +1,5 @@
 from datetime import datetime
+import importlib.util
 import json
 import os
 import sqlite3
@@ -279,8 +280,29 @@ def get_asr_model():
     return ASR_MODEL
 
 
+def render_runtime():
+    return any(
+        os.getenv(name)
+        for name in ("RENDER", "RENDER_SERVICE_ID", "RENDER_EXTERNAL_URL", "RENDER_SERVICE_NAME")
+    )
+
+
 def transcription_backend():
-    return os.getenv("TRANSCRIPTION_BACKEND", "whisper").lower()
+    configured_backend = os.getenv("TRANSCRIPTION_BACKEND")
+    if configured_backend:
+        backend = configured_backend.lower()
+        if backend == "whisper" and render_runtime() and os.getenv("ALLOW_RENDER_WHISPER", "0") != "1":
+            return "demo"
+        return backend
+
+    if using_sqlite() or render_runtime():
+        return "demo"
+
+    return "whisper"
+
+
+def whisper_available():
+    return importlib.util.find_spec("whisper") is not None
 
 
 def create_demo_transcription_result(original_filename, forced_language):
@@ -588,6 +610,9 @@ def process_transcription_job(
 
     try:
         backend = transcription_backend()
+        if backend == "whisper" and not whisper_available():
+            backend = "demo"
+
         set_job(
             job_id,
             status="processing",
@@ -1048,7 +1073,13 @@ def download_file(filetype, filename):
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "database": "sqlite" if using_sqlite() else "mysql"})
+    return jsonify(
+        {
+            "status": "ok",
+            "database": "sqlite" if using_sqlite() else "mysql",
+            "transcription_backend": transcription_backend(),
+        }
+    )
 
 
 @app.route("/logout")
