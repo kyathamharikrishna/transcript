@@ -19,7 +19,6 @@ from flask import (
     url_for,
 )
 import mysql.connector
-import whisper
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -272,6 +271,8 @@ def get_asr_model():
 
     with MODEL_LOCK:
         if ASR_MODEL is None:
+            import whisper
+
             model_name = os.getenv("WHISPER_MODEL", "small")
             ASR_MODEL = whisper.load_model(model_name)
     return ASR_MODEL
