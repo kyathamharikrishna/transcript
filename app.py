@@ -37,6 +37,7 @@ from transcription_features import (
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
 
 BASE_FOLDER = os.path.join("uploads", "transcriber")
 AUDIO_FOLDER = os.path.join(BASE_FOLDER, "audio")
@@ -700,6 +701,36 @@ def dashboard_context(user_email, limit=5):
         }
 
 
+def wants_json_response():
+    return (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.path.startswith("/api/")
+        or request.path.startswith("/jobs/")
+    )
+
+
+@app.errorhandler(413)
+def file_too_large(error):
+    message = f"File is too large. Maximum upload size is {app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)}MB."
+    if wants_json_response():
+        return jsonify({"error": message}), 413
+    return message, 413
+
+
+@app.errorhandler(404)
+def not_found(error):
+    if wants_json_response():
+        return jsonify({"error": "Requested resource was not found. Please retry the upload."}), 404
+    return "Page not found", 404
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    if wants_json_response():
+        return jsonify({"error": "Server error while processing the request. Please try again."}), 500
+    return render_template("login.html", error="Server error. Please try again."), 500
+
+
 @app.route("/")
 def login_page():
     if "user_email" in session:
@@ -805,51 +836,54 @@ def history():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    if "user_email" not in session:
-        return jsonify({"error": "Please log in again."}), 401
+    try:
+        if "user_email" not in session:
+            return jsonify({"error": "Please log in again."}), 401
 
-    if "audiofile" not in request.files:
-        return jsonify({"error": "No audio file uploaded."}), 400
+        if "audiofile" not in request.files:
+            return jsonify({"error": "No audio file uploaded."}), 400
 
-    file = request.files["audiofile"]
-    if file.filename == "":
-        return jsonify({"error": "Choose or record an audio file first."}), 400
+        file = request.files["audiofile"]
+        if file.filename == "":
+            return jsonify({"error": "Choose or record an audio file first."}), 400
 
-    original_filename = secure_filename(file.filename)
-    job_id = create_job(session["user_email"], original_filename)
-    audio_filename = f"{job_id}_{original_filename}"
-    audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
-    file.save(audio_path)
+        original_filename = secure_filename(file.filename) or "recorded_audio.webm"
+        job_id = create_job(session["user_email"], original_filename)
+        audio_filename = f"{job_id}_{original_filename}"
+        audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
+        file.save(audio_path)
 
-    forced_language = request.form.get("language", "auto")
-    set_job(
-        job_id,
-        audio_file=audio_filename,
-        progress=10,
-        message="Audio uploaded, worker starting",
-    )
-
-    worker = threading.Thread(
-        target=process_transcription_job,
-        args=(
+        forced_language = request.form.get("language", "auto")
+        set_job(
             job_id,
-            audio_path,
-            audio_filename,
-            original_filename,
-            session["user_email"],
-            forced_language,
-        ),
-        daemon=True,
-    )
-    worker.start()
+            audio_file=audio_filename,
+            progress=10,
+            message="Audio uploaded, worker starting",
+        )
 
-    return jsonify(
-        {
-            "job_id": job_id,
-            "status_url": url_for("job_status", job_id=job_id),
-            "result_url": url_for("transcription_result", job_id=job_id),
-        }
-    )
+        worker = threading.Thread(
+            target=process_transcription_job,
+            args=(
+                job_id,
+                audio_path,
+                audio_filename,
+                original_filename,
+                session["user_email"],
+                forced_language,
+            ),
+            daemon=True,
+        )
+        worker.start()
+
+        return jsonify(
+            {
+                "job_id": job_id,
+                "status_url": url_for("job_status", job_id=job_id),
+                "result_url": url_for("transcription_result", job_id=job_id),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": f"Upload failed before transcription started: {exc}"}), 500
 
 
 @app.route("/jobs/<job_id>")

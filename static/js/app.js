@@ -13,9 +13,32 @@ function setProgress(percent, message) {
   copy.textContent = message || "Processing...";
 }
 
+async function parseJsonResponse(response) {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    throw new Error(
+      response.ok
+        ? "Server returned an empty response."
+        : `Server returned ${response.status} without error details.`
+    );
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const details = text.replace(/\s+/g, " ").trim().slice(0, 180);
+    throw new Error(
+      response.ok
+        ? "Server returned an invalid response."
+        : `Server error ${response.status}: ${details}`
+    );
+  }
+}
+
 async function pollJob(statusUrl) {
   const response = await fetch(statusUrl);
-  const job = await response.json();
+  const job = await parseJsonResponse(response);
 
   if (!response.ok) {
     throw new Error(job.error || "Could not read job status.");
@@ -51,7 +74,7 @@ async function startUpload(formData) {
     body: formData,
     headers: { "X-Requested-With": "XMLHttpRequest" },
   });
-  const payload = await response.json();
+  const payload = await parseJsonResponse(response);
 
   if (!response.ok) {
     throw new Error(payload.error || "Upload failed.");
@@ -191,12 +214,19 @@ function setupQa() {
     answerBox.classList.remove("hidden");
     answerBox.textContent = "Thinking through the transcript...";
 
-    const response = await fetch(`/api/ask/${form.dataset.jobId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-    const payload = await response.json();
+    let response;
+    let payload;
+    try {
+      response = await fetch(`/api/ask/${form.dataset.jobId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      payload = await parseJsonResponse(response);
+    } catch (error) {
+      answerBox.textContent = error.message || "Could not answer that question.";
+      return;
+    }
 
     if (!response.ok) {
       answerBox.textContent = payload.error || "Could not answer that question.";
