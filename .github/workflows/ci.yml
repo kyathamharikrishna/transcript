@@ -24,3 +24,5 @@ jobs:
           python -m py_compile app.py
           python -m py_compile summarizer.py
           python -m py_compile audio_to_text.py
+          python -m py_compile qa_engine.py
+          python -m py_compile transcription_features.py

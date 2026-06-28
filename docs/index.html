@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="TranscribeFlow AI turns audio into timestamped transcripts, summaries, action items, SRT captions, and transcript Q&A.">
+  <title>TranscribeFlow AI | Live Preview</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="glow glow-one"></div>
+  <div class="glow glow-two"></div>
+
+  <header class="nav">
+    <a class="brand" href="#">
+      <span>TF</span>
+      TranscribeFlow AI
+    </a>
+    <nav>
+      <a href="#features">Features</a>
+      <a href="#screens">Preview</a>
+      <a href="#setup">Run Locally</a>
+      <a class="pill" href="https://github.com/kyathamharikrishna/transcript">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">AI transcript SaaS project</p>
+        <h1>Audio to timestamped transcripts, action items, captions, and Q&A.</h1>
+        <p class="lead">An interview-ready Flask + Whisper project with async processing, history dashboard, exports, confidence highlights, and optional Claude-powered transcript questions.</p>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/kyathamharikrishna/transcript">View Source</a>
+          <a class="btn soft" href="#setup">Run the Flask App</a>
+        </div>
+        <div class="badges">
+          <span>MIT Licensed</span>
+          <span>Whisper ASR</span>
+          <span>MySQL</span>
+          <span>GitHub Pages Preview</span>
+        </div>
+      </div>
+      <img src="assets/voice-hero.svg" alt="TranscribeFlow dashboard illustration">
+    </section>
+
+    <section id="features" class="section">
+      <p class="eyebrow">Feature stack</p>
+      <h2>Built to look like a real product, not a weekend script.</h2>
+      <div class="feature-grid">
+        <article>
+          <strong>01</strong>
+          <h3>Timestamped transcript</h3>
+          <p>Speaker-labelled segments display readable timestamps and confidence highlights.</p>
+        </article>
+        <article>
+          <strong>02</strong>
+          <h3>Action extraction</h3>
+          <p>Deadlines, todos, follow-ups, decisions, and budget mentions are surfaced automatically.</p>
+        </article>
+        <article>
+          <strong>03</strong>
+          <h3>Transcript Q&A</h3>
+          <p>Ask questions against retrieved transcript context with optional Anthropic Claude support.</p>
+        </article>
+        <article>
+          <strong>04</strong>
+          <h3>Async processing</h3>
+          <p>Uploads run in the background while the frontend polls a progress endpoint.</p>
+        </article>
+        <article>
+          <strong>05</strong>
+          <h3>History dashboard</h3>
+          <p>Past files show language, duration, word count, action count, and downloads.</p>
+        </article>
+        <article>
+          <strong>06</strong>
+          <h3>SRT export</h3>
+          <p>Whisper timestamps become subtitle files for creators, editors, and media teams.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="screens" class="section preview-section">
+      <div>
+        <p class="eyebrow">Live UI preview</p>
+        <h2>What the app looks like after login.</h2>
+        <p class="lead small">This GitHub Pages site is static. The full Whisper transcription flow runs in Flask locally or on a Python hosting platform.</p>
+      </div>
+      <div class="screen-grid">
+        <article class="screen-card large">
+          <div class="window-bar"><span></span><span></span><span></span></div>
+          <h3>Dashboard</h3>
+          <div class="upload-mock">
+            <div class="upload-icon">↥</div>
+            <strong>Drop audio here or choose a file</strong>
+            <small>Async progress • forced language • live recording</small>
+          </div>
+          <div class="progress"><span></span></div>
+        </article>
+        <article class="screen-card">
+          <h3>Action Items</h3>
+          <p><b>00:01:23</b> Budget deadline is by Friday.</p>
+          <p><b>00:03:10</b> Follow up with the design team.</p>
+        </article>
+        <article class="screen-card">
+          <h3>Transcript Q&A</h3>
+          <p class="qa">Q: What was decided about launch?</p>
+          <p>A: Launch was approved for next week.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="setup" class="section setup">
+      <p class="eyebrow">Run locally</p>
+      <h2>Start the real Flask app.</h2>
+      <pre><code>cd C:\Users\User\Desktop\transcript
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS transcribeflow;"
+mysql -u root -p transcribeflow -e "SOURCE C:/Users/User/Desktop/transcript/schema.sql"
+$env:DB_PASSWORD="your_mysql_password"
+$env:WHISPER_MODEL="small"
+python app.py</code></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span>MIT Licensed © 2026 Kyatham Harikrishna</span>
+    <a href="https://github.com/kyathamharikrishna/transcript">github.com/kyathamharikrishna/transcript</a>
+  </footer>
+</body>
+</html>

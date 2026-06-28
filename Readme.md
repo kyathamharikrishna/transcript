@@ -2,7 +2,14 @@
 
 TranscribeFlow AI is a Flask + Whisper web application for turning audio into timestamped transcripts, summaries, action items, subtitles, downloadable reports, and transcript Q&A.
 
-GitHub Repository: https://github.com/Rama-124/transcript
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![Flask](https://img.shields.io/badge/Flask-AI%20SaaS-black.svg)
+
+- **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
+- **Live Preview:** https://kyathamharikrishna.github.io/transcript/
+
+> GitHub Pages hosts the static product preview. The full Whisper transcription app needs Flask, MySQL, and FFmpeg, so run it locally or deploy it to a Python hosting platform for the real backend.
 
 ## Interview-Ready Features
 
@@ -68,7 +75,7 @@ transcript/
 1. Clone the repository.
 
    ```bash
-   git clone https://github.com/Rama-124/transcript.git
+   git clone https://github.com/kyathamharikrishna/transcript.git
    cd transcript
    ```
 
