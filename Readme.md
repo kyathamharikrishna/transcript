@@ -9,7 +9,7 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
 - **Render Live App:** https://transcribeflow-ai.onrender.com/
 
-> Render hosts the real Flask backend in lightweight demo mode. The included `render.yaml` uses Docker, starts Gunicorn, and defaults to SQLite + demo transcription so the free instance does not crash from Whisper/Torch memory usage.
+> Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite, and sends audio to a transcription API instead of loading Whisper/Torch on the free instance.
 
 ## Deploy Live on Render
 
@@ -20,7 +20,7 @@ This repository includes:
 - `render.yaml` — Render Blueprint for one-click deployment
 - `/health` — health-check endpoint for Render
 - `DB_BACKEND=sqlite` — demo database mode for live hosting without MySQL
-- `TRANSCRIPTION_BACKEND=demo` — Render-safe upload flow that avoids loading Whisper/Torch on the free tier
+- `TRANSCRIPTION_BACKEND=openai` — Render-safe real transcription flow using the OpenAI Audio API
 
 ### Render Steps
 
@@ -28,9 +28,10 @@ This repository includes:
 2. Click `New` → `Blueprint`.
 3. Connect this repository: `kyathamharikrishna/transcript`.
 4. Render will detect `render.yaml`.
-5. Click `Apply`.
-6. Wait for the Docker build to finish.
-7. Open the generated Render URL.
+5. Add the secret environment variable `OPENAI_API_KEY`.
+6. Click `Apply`.
+7. Wait for the Docker build to finish.
+8. Open the generated Render URL.
 
 Live app URL:
 
@@ -40,7 +41,7 @@ https://transcribeflow-ai.onrender.com/
 
 Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
 
-The Render free service uses `TRANSCRIPTION_BACKEND=demo` and `requirements-render.txt` to prevent memory-limit restarts. For full Whisper transcription, run locally with the default `TRANSCRIPTION_BACKEND=whisper`, or upgrade Render and switch Docker back to `requirements.txt`.
+The Render free service uses `TRANSCRIPTION_BACKEND=openai` and `requirements-render.txt` to prevent memory-limit restarts. For local offline transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
 
 ## Interview-Ready Features
 
@@ -167,9 +168,9 @@ transcript/
 
 - `app.py` automatically creates missing tables and adds new columns for upgraded projects.
 - Local development uses MySQL by default.
-- Render uses SQLite demo mode through `DB_BACKEND=sqlite` in `render.yaml`.
+- Render uses SQLite mode through `DB_BACKEND=sqlite` in `render.yaml`.
 - Local development uses real Whisper by default through `TRANSCRIPTION_BACKEND=whisper`.
-- Render free uses `TRANSCRIPTION_BACKEND=demo` so login, upload, history, exports, and UI can be demonstrated without memory crashes.
+- Render free uses `TRANSCRIPTION_BACKEND=openai` so login, upload, history, exports, and UI work without memory crashes.
 - New passwords are stored with Werkzeug password hashing.
 - Existing plaintext passwords are migrated to hashed passwords the next time the user logs in successfully.
 
@@ -187,7 +188,9 @@ transcript/
 - `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
 - `DB_BACKEND` — set `sqlite` for Render/demo mode or leave as `mysql` for local MySQL
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
-- `TRANSCRIPTION_BACKEND` — use `whisper` for real local transcription, or `demo` for Render free-tier stability
+- `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `demo` for no-key demos
+- `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
+- `OPENAI_TRANSCRIBE_MODEL` — defaults to `whisper-1` for timestamped API transcription
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
 - `ANTHROPIC_MODEL` — overrides the Claude model used by Q&A

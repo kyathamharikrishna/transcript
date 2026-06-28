@@ -1,6 +1,7 @@
 from datetime import datetime
 import importlib.util
 import json
+import mimetypes
 import os
 import sqlite3
 import threading
@@ -303,6 +304,87 @@ def transcription_backend():
 
 def whisper_available():
     return importlib.util.find_spec("whisper") is not None
+
+
+def normalize_api_segments(payload):
+    text = (payload.get("text") or "").strip()
+    duration = float(payload.get("duration") or 0)
+    segments = payload.get("segments") or []
+    words = payload.get("words") or []
+
+    if not segments and text:
+        segments = [{"start": 0, "end": duration or 1, "text": text}]
+
+    normalized_segments = []
+    for segment in segments:
+        segment_start = float(segment.get("start") or 0)
+        segment_end = float(segment.get("end") or segment_start + 1)
+        segment_words = segment.get("words") or [
+            word
+            for word in words
+            if float(word.get("start") or 0) >= segment_start
+            and float(word.get("end") or 0) <= segment_end + 0.05
+        ]
+
+        normalized_segments.append(
+            {
+                "start": segment_start,
+                "end": segment_end,
+                "text": (segment.get("text") or "").strip(),
+                "words": [
+                    {
+                        "word": word.get("word") or word.get("text") or "",
+                        "start": word.get("start", segment_start),
+                        "end": word.get("end", segment_end),
+                        "probability": word.get("probability"),
+                    }
+                    for word in segment_words
+                ],
+            }
+        )
+
+    return {
+        "text": text,
+        "language": payload.get("language") or "unknown",
+        "segments": normalized_segments,
+    }
+
+
+def transcribe_with_openai_api(audio_path, forced_language):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is missing. Add it in Render environment variables for real live transcription.")
+
+    import requests
+
+    model = os.getenv("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
+    content_type = mimetypes.guess_type(audio_path)[0] or "application/octet-stream"
+    data = [
+        ("model", model),
+        ("response_format", "verbose_json"),
+        ("timestamp_granularities[]", "segment"),
+        ("timestamp_granularities[]", "word"),
+    ]
+    if forced_language and forced_language != "auto":
+        data.append(("language", forced_language))
+
+    with open(audio_path, "rb") as audio_file:
+        response = requests.post(
+            os.getenv("OPENAI_TRANSCRIBE_URL", "https://api.openai.com/v1/audio/transcriptions"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            data=data,
+            files={"file": (os.path.basename(audio_path), audio_file, content_type)},
+            timeout=600,
+        )
+
+    if response.status_code >= 400:
+        try:
+            details = response.json()
+        except ValueError:
+            details = response.text[:500]
+        raise RuntimeError(f"Transcription API failed: {details}")
+
+    return normalize_api_segments(response.json())
 
 
 def create_demo_transcription_result(original_filename, forced_language):
@@ -610,39 +692,57 @@ def process_transcription_job(
 
     try:
         backend = transcription_backend()
-        if backend == "whisper" and not whisper_available():
+        if backend in {"openai_api", "api"}:
+            backend = "openai"
+
+        if backend == "openai":
+            set_job(
+                job_id,
+                status="processing",
+                progress=35,
+                message="Sending audio to transcription API",
+            )
+            result = transcribe_with_openai_api(audio_path, forced_language)
+        elif backend == "whisper" and not whisper_available():
             backend = "demo"
-
-        set_job(
-            job_id,
-            status="processing",
-            progress=18,
-            message="Preparing audio for transcription",
-        )
-
-        if backend == "demo":
             set_job(
                 job_id,
                 status="processing",
                 progress=45,
-                message="Render demo backend is generating a safe preview",
+                message="Whisper is unavailable, using safe demo backend",
             )
             result = create_demo_transcription_result(original_filename, forced_language)
         else:
             set_job(
                 job_id,
                 status="processing",
-                progress=35,
-                message="Loading Whisper and reading the audio",
+                progress=18,
+                message="Preparing audio for transcription",
             )
-            options = {
-                "word_timestamps": True,
-                "fp16": os.getenv("WHISPER_FP16", "0") == "1",
-            }
-            if forced_language and forced_language != "auto":
-                options["language"] = forced_language
 
-            result = get_asr_model().transcribe(audio_path, **options)
+            if backend == "demo":
+                set_job(
+                    job_id,
+                    status="processing",
+                    progress=45,
+                    message="Render demo backend is generating a safe preview",
+                )
+                result = create_demo_transcription_result(original_filename, forced_language)
+            else:
+                set_job(
+                    job_id,
+                    status="processing",
+                    progress=35,
+                    message="Loading Whisper and reading the audio",
+                )
+                options = {
+                    "word_timestamps": True,
+                    "fp16": os.getenv("WHISPER_FP16", "0") == "1",
+                }
+                if forced_language and forced_language != "auto":
+                    options["language"] = forced_language
+
+                result = get_asr_model().transcribe(audio_path, **options)
 
         set_job(
             job_id,

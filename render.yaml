@@ -15,9 +15,11 @@ services:
       - key: SQLITE_DB_PATH
         value: uploads/transcriber/transcribeflow.sqlite
       - key: TRANSCRIPTION_BACKEND
-        value: demo
-      - key: WHISPER_MODEL
-        value: tiny
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_TRANSCRIBE_MODEL
+        value: whisper-1
       - key: WHISPER_FP16
         value: "0"
       - key: ENABLE_TRANSFORMERS_SUMMARY
