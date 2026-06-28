@@ -1,185 +1,144 @@
+# TranscribeFlow AI
 
-TranscribeFlow: Audio Transcript Summarizer
-============================================================
+TranscribeFlow AI is a Flask + Whisper web application for turning audio into timestamped transcripts, summaries, action items, subtitles, downloadable reports, and transcript Q&A.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/Rama-124/transcript/blob/main/LICENSE)
-License: MIT
+GitHub Repository: https://github.com/Rama-124/transcript
 
-TranscribeFlow AI is a full-stack web application that converts speech into text using Artificial Intelligence, generates smart summaries, and provides downloadable structured reports. The system supports both audio file uploads and live voice recording.
+## Interview-Ready Features
 
-It is designed as a real-world, industry-grade AI SaaS platform with secure user authentication, database storage, and intelligent document generation.
+### Tier 1
 
-GitHub Repository:
-https://github.com/Rama-124/transcript
+- **Timestamped transcript with speaker labels** — every Whisper segment is displayed like `[00:01:23] Speaker 1: ...`.
+- **Keyword and action item extractor** — deadline, todo, follow-up, budget, and decision phrases are pulled into a separate action panel.
+- **Q&A on transcript** — users can ask questions about their own transcript. If `ANTHROPIC_API_KEY` is configured, Claude answers with retrieved transcript context; otherwise a local retrieval fallback answers from matching transcript sections.
 
----
+### Tier 2
 
-## FEATURES
+- **Async processing with progress bar** — uploads return immediately and a background worker updates status while Whisper runs.
+- **Transcription history dashboard** — previous transcripts show date, language, duration, word count, action count, and downloads.
+- **SRT subtitle export** — timestamped segments are exported as `.srt` captions for creators and video workflows.
+- **Language detection and forced language** — Whisper auto-detects language and users can force common languages from the dashboard.
 
-AUDIO PROCESSING
-• Upload audio files (MP3, WAV, etc.)
-• Live voice recording in browser
-• AI-powered speech-to-text transcription
+### Tier 3
 
-AI INTELLIGENCE
-• Automatic text summarization
-• Transformer-based summarization (optional)
-• Smart extractive fallback summarizer
-• Clean structured report generation
+- **Audio and transcript stats** — duration, word count, processing time, language, and action counts.
+- **Copy-to-clipboard buttons** — copy transcript and summary in one click.
+- **Confidence highlights** — low-confidence Whisper words are highlighted so users can review uncertain text.
 
-REPORT GENERATION
-• Download Combined Report (Transcript + Summary)
-• Download JSON structured data
-• Organized file storage system
+## Tech Stack
 
-USER SYSTEM
-• User Registration & Login
-• Secure session management
-• User-specific transcription records
+- **Frontend:** HTML, CSS, JavaScript, Font Awesome, responsive glassmorphism UI
+- **Backend:** Python, Flask, background threads, OpenAI Whisper
+- **Database:** MySQL
+- **AI/NLP:** Whisper ASR, extractive summarizer, optional Transformers summary, optional Anthropic Claude Q&A
+- **Exports:** TXT report, JSON payload, SRT captions
 
-DATA MANAGEMENT
-• MySQL database integration
-• Stores audio, transcripts, summaries, and reports
-• Organized backend file structure
+## Project Structure
 
----
-
-## TECH STACK
-
-Frontend:
-• HTML5
-• CSS3 (Modern Glass UI)
-• JavaScript
-• Font Awesome Icons
-
-Backend:
-• Python
-• Flask Framework
-• OpenAI Whisper (Speech Recognition)
-• Custom NLP Summarizer
-• Transformers (Optional)
-
-Database:
-• MySQL
-
-AI Models:
-• Whisper ASR Model — Speech Recognition
-• Extractive NLP Summarizer
-• Facebook BART (Optional Transformer Summary)
-
----
-
-## PROJECT STRUCTURE
-
-TranscribeFlow/
-│
-├── templates/
-│   ├── login.html
-│   ├── registration.html
-│   └── dashboard.html
-│
-├── uploads/
-│   └── transcriber/
-│       ├── audio/
-│       ├── transcript/
-│       ├── summary/
-│       ├── json/
-│       └── combined/
-│
-├── summarizer.py
+```text
+transcript/
 ├── app.py
-└── README.txt
+├── qa_engine.py
+├── summarizer.py
+├── transcription_features.py
+├── schema.sql
+├── requirements.txt
+├── static/
+│   ├── css/app.css
+│   ├── js/app.js
+│   └── img/
+├── templates/
+│   ├── base.html
+│   ├── dashboard.html
+│   ├── history.html
+│   ├── login.html
+│   ├── register.html
+│   └── result.html
+└── uploads/transcriber/
+    ├── audio/
+    ├── transcript/
+    ├── summary/
+    ├── json/
+    ├── combined/
+    └── srt/
+```
 
----
+## Setup
 
-## INSTALLATION & SETUP
+1. Clone the repository.
 
-1. Clone Repository
-   git clone https://github.com/yourusername/transcribeflow-ai.git
-   cd transcribeflow-ai
+   ```bash
+   git clone https://github.com/Rama-124/transcript.git
+   cd transcript
+   ```
 
-2. Create Virtual Environment
-   python -m venv venv
-   venv\Scripts\activate
+2. Create and activate a virtual environment.
 
-3. Install Dependencies
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+3. Install dependencies.
+
+   ```bash
    pip install -r requirements.txt
+   ```
 
-4. Setup MySQL Database
+4. Install FFmpeg and make sure `ffmpeg` is available in your terminal path. Whisper requires it for audio/video decoding.
 
-Create database:
-transcribeflow
+5. Create the MySQL database.
 
-Create tables:
+   ```sql
+   CREATE DATABASE transcribeflow;
+   USE transcribeflow;
+   SOURCE schema.sql;
+   ```
 
-CREATE TABLE users (
-id INT AUTO_INCREMENT PRIMARY KEY,
-name VARCHAR(100),
-email VARCHAR(100),
-password VARCHAR(100)
-);
+6. Configure environment variables as needed.
 
-CREATE TABLE transcriptions (
-id INT AUTO_INCREMENT PRIMARY KEY,
-user_email VARCHAR(100),
-audio_file VARCHAR(255),
-transcript_file VARCHAR(255),
-summary_file VARCHAR(255),
-json_file VARCHAR(255),
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+   ```bash
+   set FLASK_SECRET_KEY=change-this-secret
+   set DB_HOST=localhost
+   set DB_USER=root
+   set DB_PASSWORD=your_mysql_password
+   set DB_NAME=transcribeflow
+   set WHISPER_MODEL=small
+   set ANTHROPIC_API_KEY=your_key_here
+   ```
 
-5. Run Application
+   `ANTHROPIC_API_KEY` is optional. Without it, transcript Q&A uses the local retrieval fallback.
+
+7. Run the application.
+
+   ```bash
    python app.py
+   ```
 
-Open browser:
-http://127.0.0.1:5000
+8. Open http://127.0.0.1:5000.
 
----
+## Database Notes
 
-## HOW IT WORKS
+- `app.py` automatically creates missing tables and adds new columns for upgraded projects.
+- New passwords are stored with Werkzeug password hashing.
+- Existing plaintext passwords are migrated to hashed passwords the next time the user logs in successfully.
 
-1. User uploads audio or records live voice
-2. Whisper AI converts speech to text
-3. NLP system generates summary
-4. System creates structured report files
-5. Files stored and available for download
+## Output Files
 
----
+- **Transcript TXT:** speaker-labelled timestamped transcript
+- **Summary TXT:** concise AI summary
+- **Combined Report TXT:** metadata, summary, action items, and transcript
+- **JSON:** complete structured payload with stats, files, segments, and action items
+- **SRT:** subtitle captions generated from Whisper timestamps
 
-## OUTPUT FILES
+## Environment Options
 
-Audio File        → Original user upload
-Transcript File   → Full speech-to-text output
-Summary File      → AI-generated concise summary
-Combined Report   → Transcript + Summary together
-JSON File         → Structured metadata
+- `WHISPER_MODEL` — Whisper model name, default `small`
+- `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
+- `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
+- `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
+- `ANTHROPIC_MODEL` — overrides the Claude model used by Q&A
 
----
+## License
 
-## SECURITY FEATURES
-
-• Session-based authentication
-• User-specific data isolation
-• Secure file handling
-• Protected download routes
-
----
-
-## AUTHOR
-
-Harikrishna
-AI & Full Stack Developer
-Passionate about building intelligent real-world software systems.
-
----
-
-## LICENSE
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/Rama-124/transcript/blob/main/LICENSE)
-
-This project is licensed under the MIT License.
-See the [LICENSE](https://github.com/Rama-124/transcript/blob/main/LICENSE) file on GitHub.
-
-GitHub: https://github.com/Rama-124/transcript
-License: MIT
+This project is licensed under the MIT License. See `LICENSE`.

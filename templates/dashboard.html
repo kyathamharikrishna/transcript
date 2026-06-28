@@ -1,160 +1,146 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>TranscribeFlow | AI Speech Dashboard</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{
-font-family:'Segoe UI',sans-serif;
-background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
-min-height:100vh;color:white;}
-body::before{content:"";position:fixed;top:-100px;left:-100px;width:400px;height:400px;background:#667eea;filter:blur(180px);opacity:0.4;}
-body::after{content:"";position:fixed;bottom:-100px;right:-100px;width:400px;height:400px;background:#764ba2;filter:blur(180px);opacity:0.4;}
-header{display:flex;justify-content:space-between;align-items:center;padding:25px 60px;}
-.logo{font-size:26px;font-weight:700;}
-.logout{background:white;color:#667eea;padding:8px 18px;border-radius:8px;text-decoration:none;font-weight:600;}
-.container{width:90%;margin:auto;margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:30px;}
-.card{background:rgba(255,255,255,0.08);backdrop-filter:blur(15px);border:1px solid rgba(255,255,255,0.1);padding:30px;border-radius:18px;box-shadow:0 15px 40px rgba(0,0,0,0.4);}
-.upload-area{border:2px dashed rgba(255,255,255,0.4);padding:45px;text-align:center;border-radius:14px;transition:0.3s;background:rgba(255,255,255,0.05);}
-.upload-area:hover{background:rgba(255,255,255,0.1);transform:scale(1.02);}
-.upload-area i{font-size:45px;color:#9aa6ff;margin-bottom:10px;}
-button{padding:12px 20px;border:none;border-radius:8px;cursor:pointer;font-weight:600;transition:0.2s;}
-.primary{background:#667eea;color:white;}
-.primary:hover{background:#5a67d8;}
-.danger{background:#e63946;color:white;}
-.dark{background:#2d3748;color:white;}
-.record-section{text-align:center;margin-top:20px;}
-.timer{font-size:22px;font-weight:600;margin-top:10px;color:#9aa6ff;}
-.wave{display:flex;justify-content:center;gap:4px;margin-top:10px;}
-.wave span{width:4px;height:10px;background:#667eea;animation:wave 1s infinite;}
-.wave span:nth-child(2){animation-delay:0.1s}
-.wave span:nth-child(3){animation-delay:0.2s}
-.wave span:nth-child(4){animation-delay:0.3s}
-.wave span:nth-child(5){animation-delay:0.4s}
-@keyframes wave{0%{height:10px}50%{height:30px}100%{height:10px}}
-.loader{display:none;margin-top:15px;font-weight:bold;color:#9aa6ff;animation:pulse 1.2s infinite;}
-@keyframes pulse{0%{opacity:0.3}50%{opacity:1}100%{opacity:0.3}}
-.progress{width:100%;height:6px;background:#2c3e50;margin-top:10px;border-radius:10px;overflow:hidden;display:none;}
-.bar{width:40%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);animation:move 1.5s infinite;}
-@keyframes move{0%{margin-left:-40%}100%{margin-left:100%}}
-.result-box{background:rgba(255,255,255,0.05);padding:20px;border-radius:10px;margin-bottom:20px;max-height:250px;overflow:auto;}
-.download-buttons{display:flex;gap:10px;flex-wrap:wrap;}
-.status{background:#2ecc71;padding:6px 14px;border-radius:20px;font-size:13px;}
-footer{text-align:center;margin-top:40px;color:#aaa;font-size:14px;}
-@media(max-width:900px){.container{grid-template-columns:1fr;}}
-</style>
-</head>
+{% extends "base.html" %}
 
-<body>
+{% block title %}Dashboard | TranscribeFlow AI{% endblock %}
 
-<header>
-<div class="logo">🎙 TranscribeFlow AI</div>
-<a href="/logout" class="logout">Logout</a>
-</header>
+{% block content %}
+<section class="dashboard-hero">
+  <div class="panel upload-panel">
+    <span class="eyebrow">Async Whisper Pipeline</span>
+    <h1>Upload audio. Watch it process. Ask it anything.</h1>
+    <p class="muted">TranscribeFlow now creates timestamped transcripts, summaries, action items, SRT captions, confidence highlights, and searchable Q&A.</p>
 
-<div class="container">
+    {% if db_error %}
+    <div class="alert alert-error">Database warning: {{ db_error }}</div>
+    {% endif %}
 
-<!-- LEFT -->
-<div class="card">
-<h2>Upload or Record Audio</h2>
-<form method="POST" action="/upload" enctype="multipart/form-data" onsubmit="showLoader()">
-<div class="upload-area">
-<i class="fa-solid fa-cloud-arrow-up"></i>
-<p>Upload Audio File</p>
-<br>
-<input type="file" name="audiofile" required>
-<br><br>
-<button class="primary">Upload & Transcribe</button>
-</div>
-</form>
+    <form id="uploadForm" class="upload-form" action="{{ url_for('upload') }}" method="POST" enctype="multipart/form-data">
+      <label class="file-drop" id="fileDrop">
+        <input id="audioFile" type="file" name="audiofile" accept="audio/*,video/*" required>
+        <span class="file-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+        <strong id="fileName">Drop audio here or choose a file</strong>
+        <small>MP3, WAV, M4A, WEBM, MP4 and more</small>
+      </label>
 
-<div class="record-section">
-<h3 style="margin-top:25px;">Live Recording</h3>
-<br>
-<button id="startBtn" class="primary"><i class="fa fa-microphone"></i> Start</button>
-<button id="stopBtn" class="danger" disabled><i class="fa fa-stop"></i> Stop</button>
-<div class="timer" id="timer">00:00</div>
-<div class="wave"><span></span><span></span><span></span><span></span><span></span></div>
-<div class="loader" id="loader">🤖 AI Processing Speech...</div>
-<div class="progress" id="progress"><div class="bar"></div></div>
-</div>
+      <div class="form-row">
+        <label>
+          Language
+          <select name="language">
+            {% for value, label in language_options %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          Start Transcription
+        </button>
+      </div>
+    </form>
 
-<form id="recordForm" method="POST" action="/upload" enctype="multipart/form-data" style="display:none;">
-<input type="file" name="audiofile" id="recordedFile">
-</form>
-</div>
+    <div class="record-card">
+      <div>
+        <h3>Live recording</h3>
+        <p class="muted">Record directly in the browser and send it into the same pipeline.</p>
+      </div>
+      <div class="record-actions">
+        <button id="startBtn" class="btn btn-soft"><i class="fa fa-microphone"></i> Start</button>
+        <button id="stopBtn" class="btn btn-danger" disabled><i class="fa fa-stop"></i> Stop</button>
+      </div>
+      <div class="timer" id="timer">00:00</div>
+    </div>
 
-<!-- RIGHT -->
-{% if transcript %}
-<div class="card">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
-<h2>AI Analysis</h2>
-<span class="status">Completed ✔</span>
-</div>
+    <div id="jobProgress" class="job-progress hidden">
+      <div class="progress-copy">
+        <span id="jobMessage">Preparing upload...</span>
+        <strong id="jobPercent">0%</strong>
+      </div>
+      <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+    </div>
+  </div>
 
-<div class="result-box">
-<h3>📝 Transcription</h3>
-<p>{{ transcript }}</p>
-</div>
+  <div class="panel hero-panel">
+    <img src="{{ url_for('static', filename='img/voice-hero.svg') }}" alt="Transcript product dashboard">
+    <div class="feature-cloud">
+      <span><i class="fa-regular fa-clock"></i> Timestamped</span>
+      <span><i class="fa-solid fa-list-check"></i> Action items</span>
+      <span><i class="fa-solid fa-closed-captioning"></i> SRT export</span>
+      <span><i class="fa-solid fa-comments"></i> Transcript Q&A</span>
+    </div>
+  </div>
+</section>
 
-<div class="result-box">
-<h3>📌 Summary</h3>
-<p>{{ summary }}</p>
-</div>
+<section class="metric-grid">
+  <div class="metric-card">
+    <span>Total files</span>
+    <strong>{{ stats.total_transcriptions or 0 }}</strong>
+  </div>
+  <div class="metric-card">
+    <span>Words captured</span>
+    <strong>{{ stats.total_words or 0 }}</strong>
+  </div>
+  <div class="metric-card">
+    <span>Action items</span>
+    <strong>{{ stats.total_actions or 0 }}</strong>
+  </div>
+  <div class="metric-card">
+    <span>Audio processed</span>
+    <strong>{{ stats.total_duration_label }}</strong>
+  </div>
+</section>
 
-<div class="download-buttons">
-<button class="primary" onclick="downloadReport()">
-<i class="fa fa-download"></i> Download Report
-</button>
-</div>
+<section class="panel">
+  <div class="section-heading">
+    <div>
+      <span class="eyebrow">Recent work</span>
+      <h2>Transcription history</h2>
+    </div>
+    <a class="btn btn-soft" href="{{ url_for('history') }}">View all</a>
+  </div>
 
-</div>
-{% endif %}
-
-</div>
-
-<script>
-let mediaRecorder,audioChunks=[],seconds=0,timerInterval;
-const startBtn=document.getElementById("startBtn"),
-stopBtn=document.getElementById("stopBtn"),
-timer=document.getElementById("timer"),
-loader=document.getElementById("loader"),
-progress=document.getElementById("progress");
-
-function updateTimer(){seconds++;let m=String(Math.floor(seconds/60)).padStart(2,'0');let s=String(seconds%60).padStart(2,'0');timer.innerHTML=m+":"+s;}
-
-if(startBtn){
-startBtn.onclick=async()=>{
-const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-mediaRecorder=new MediaRecorder(stream);mediaRecorder.start();audioChunks=[];
-startBtn.disabled=true;stopBtn.disabled=false;seconds=0;
-timerInterval=setInterval(updateTimer,1000);
-mediaRecorder.ondataavailable=e=>audioChunks.push(e.data);
-};}
-
-if(stopBtn){
-stopBtn.onclick=()=>{mediaRecorder.stop();clearInterval(timerInterval);
-startBtn.disabled=false;stopBtn.disabled=true;
-mediaRecorder.onstop=()=>{
-loader.style.display="block";progress.style.display="block";
-const blob=new Blob(audioChunks,{type:'audio/webm'});
-const file=new File([blob],"recorded_audio.webm");
-const dt=new DataTransfer();dt.items.add(file);
-document.getElementById("recordedFile").files=dt.files;
-document.getElementById("recordForm").submit();
-};};}
-
-function showLoader(){if(loader)loader.style.display="block";if(progress)progress.style.display="block";}
-
-function downloadReport(){
-const jsonUrl="{{ url_for('download_json', filename=json_file) }}";
-const combinedUrl="{{ url_for('download_combined', filename=combined_file) }}";
-const a1=document.createElement('a');a1.href=jsonUrl;document.body.appendChild(a1);a1.click();document.body.removeChild(a1);
-setTimeout(()=>{const a2=document.createElement('a');a2.href=combinedUrl;document.body.appendChild(a2);a2.click();document.body.removeChild(a2);},500);
-}
-</script>
-
-</body>
-</html>
+  {% if recent_records %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Language</th>
+          <th>Duration</th>
+          <th>Words</th>
+          <th>Actions</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in recent_records %}
+        <tr>
+          <td>
+            <strong>{{ item.original_filename or item.audio_file }}</strong>
+            <small>{{ item.created_at }}</small>
+          </td>
+          <td>{{ item.language_label }}</td>
+          <td>{{ item.duration_label }}</td>
+          <td>{{ item.word_count or 0 }}</td>
+          <td>{{ item.action_items_count or 0 }}</td>
+          <td>
+            {% if item.job_id %}
+            <a class="table-link" href="{{ url_for('transcription_result', job_id=item.job_id) }}">Open</a>
+            {% else %}
+            <span class="muted">Legacy</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <img src="{{ url_for('static', filename='img/empty-history.svg') }}" alt="Empty transcript history">
+    <div>
+      <h3>No transcripts yet</h3>
+      <p class="muted">Upload your first audio file and the history dashboard will come alive.</p>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

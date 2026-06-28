@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Transcript Result | TranscribeFlow AI{% endblock %}
+
+{% block content %}
+<section class="panel page-header result-header">
+  <div>
+    <span class="eyebrow">Completed analysis</span>
+    <h1>{{ payload.original_filename or "Transcript result" }}</h1>
+    <p class="muted">Timestamped transcript, confidence highlights, action items, summary, downloads, and Q&A.</p>
+  </div>
+  <div class="download-buttons">
+    {% if files.combined %}<a class="btn btn-primary" href="{{ url_for('download_file', filetype='combined', filename=files.combined) }}"><i class="fa fa-download"></i> Report</a>{% endif %}
+    {% if files.srt %}<a class="btn btn-soft" href="{{ url_for('download_file', filetype='srt', filename=files.srt) }}">SRT</a>{% endif %}
+    {% if files.json %}<a class="btn btn-soft" href="{{ url_for('download_file', filetype='json', filename=files.json) }}">JSON</a>{% endif %}
+  </div>
+</section>
+
+<section class="metric-grid">
+  <div class="metric-card">
+    <span>Language</span>
+    <strong>{{ stats.detected_language or payload.detected_language or "Unknown" }}</strong>
+  </div>
+  <div class="metric-card">
+    <span>Duration</span>
+    <strong>{{ stats.duration_label or "0s" }}</strong>
+  </div>
+  <div class="metric-card">
+    <span>Words</span>
+    <strong>{{ stats.word_count or 0 }}</strong>
+  </div>
+  <div class="metric-card">
+    <span>Processed in</span>
+    <strong>{{ stats.processing_seconds or 0 }}s</strong>
+  </div>
+</section>
+
+<section class="result-grid">
+  <div class="panel transcript-panel">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">Speaker-labelled transcript</span>
+        <h2>Timestamped transcript</h2>
+      </div>
+      <button class="btn btn-soft" data-copy-target="timestampedTranscript"><i class="fa-regular fa-copy"></i> Copy</button>
+    </div>
+
+    <div id="timestampedTranscript" class="transcript-list">
+      {% if segments %}
+      {% for segment in segments %}
+      <article class="segment {% if segment.low_confidence %}segment-low{% endif %}">
+        <div class="segment-meta">
+          <span>[{{ segment.timestamp }}]</span>
+          <strong>{{ segment.speaker }}</strong>
+          {% if segment.confidence_percent is not none %}
+          <small>{{ segment.confidence_percent }}% confidence</small>
+          {% endif %}
+        </div>
+        <p>
+          {% if segment.words %}
+            {% for word in segment.words %}<span class="{% if word.low_confidence %}low-confidence{% endif %}" title="{% if word.confidence_percent is not none %}Confidence {{ word.confidence_percent }}%{% endif %}">{{ word.text }}</span>{% endfor %}
+          {% else %}
+            {{ segment.text }}
+          {% endif %}
+        </p>
+      </article>
+      {% endfor %}
+      {% else %}
+      <pre>{{ payload.timestamped_transcript or payload.transcript }}</pre>
+      {% endif %}
+    </div>
+  </div>
+
+  <aside class="side-stack">
+    <div class="panel">
+      <div class="section-heading compact">
+        <div>
+          <span class="eyebrow">Smart summary</span>
+          <h2>Summary</h2>
+        </div>
+        <button class="icon-button" data-copy-target="summaryText"><i class="fa-regular fa-copy"></i></button>
+      </div>
+      <p id="summaryText" class="summary-text">{{ payload.summary or "No summary generated." }}</p>
+    </div>
+
+    <div class="panel">
+      <span class="eyebrow">Keyword extraction</span>
+      <h2>Action items</h2>
+      {% if action_items %}
+      <div class="action-list">
+        {% for item in action_items %}
+        <div class="action-item">
+          <span>{{ item.timestamp }}</span>
+          <p>{{ item.text }}</p>
+          <div>
+            {% for label in item.labels %}
+            <small>{{ label }}</small>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">No deadline, todo, follow-up, budget, or decision phrases were detected.</p>
+      {% endif %}
+    </div>
+
+    <div class="panel qa-panel">
+      <span class="eyebrow">RAG on your transcript</span>
+      <h2>Ask the transcript</h2>
+      <form id="qaForm" data-job-id="{{ payload.job_id }}">
+        <textarea name="question" placeholder="What was discussed about the budget?" required></textarea>
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-comments"></i> Ask</button>
+      </form>
+      <div id="qaAnswer" class="qa-answer hidden"></div>
+    </div>
+  </aside>
+</section>
+{% endblock %}

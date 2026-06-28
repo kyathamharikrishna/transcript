@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}History | TranscribeFlow AI{% endblock %}
+
+{% block content %}
+<section class="panel page-header">
+  <div>
+    <span class="eyebrow">Transcript vault</span>
+    <h1>History dashboard</h1>
+    <p class="muted">Review every processed file, reopen analysis, or download reports and subtitles.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('dashboard') }}"><i class="fa-solid fa-plus"></i> New transcript</a>
+</section>
+
+{% if db_error %}
+<div class="alert alert-error">Database warning: {{ db_error }}</div>
+{% endif %}
+
+<section class="panel">
+  {% if records %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Created</th>
+          <th>Language</th>
+          <th>Duration</th>
+          <th>Words</th>
+          <th>Downloads</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in records %}
+        <tr>
+          <td>
+            <strong>{{ item.original_filename or item.audio_file }}</strong>
+            <small>{{ item.action_items_count or 0 }} action items • {{ item.processing_seconds or 0 }}s processing</small>
+          </td>
+          <td>{{ item.created_at }}</td>
+          <td>{{ item.language_label }}</td>
+          <td>{{ item.duration_label }}</td>
+          <td>{{ item.word_count or 0 }}</td>
+          <td class="download-cell">
+            {% if item.job_id %}<a href="{{ url_for('transcription_result', job_id=item.job_id) }}">Open</a>{% endif %}
+            {% if item.combined_file %}<a href="{{ url_for('download_file', filetype='combined', filename=item.combined_file) }}">Report</a>{% endif %}
+            {% if item.srt_file %}<a href="{{ url_for('download_file', filetype='srt', filename=item.srt_file) }}">SRT</a>{% endif %}
+            {% if item.json_file %}<a href="{{ url_for('download_file', filetype='json', filename=item.json_file) }}">JSON</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <img src="{{ url_for('static', filename='img/empty-history.svg') }}" alt="No history illustration">
+    <div>
+      <h3>No saved transcriptions</h3>
+      <p class="muted">Your processed meetings, lectures, and interviews will appear here.</p>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

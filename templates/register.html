@@ -1,76 +1,40 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>TranscribeFlow | Register</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #43cea2, #185a9d);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
+{% extends "base.html" %}
 
-    .card {
-      background: rgba(255,255,255,0.1);
-      backdrop-filter: blur(15px);
-      padding: 40px;
-      border-radius: 15px;
-      width: 350px;
-      text-align: center;
-      color: white;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    }
+{% block title %}Register | TranscribeFlow AI{% endblock %}
+{% block body_class %}auth-page{% endblock %}
 
-    input {
-      width: 100%;
-      padding: 12px;
-      margin: 10px 0;
-      border: none;
-      border-radius: 8px;
-      outline: none;
-    }
+{% block content %}
+<section class="auth-layout">
+  <div class="auth-copy">
+    <span class="eyebrow">Build your transcript vault</span>
+    <h1>Capture every useful line from meetings, lectures, and interviews.</h1>
+    <p>Your dashboard keeps timestamped transcripts, action items, summaries, SRT captions, and Q&A in one place.</p>
+    <img class="hero-illustration" src="{{ url_for('static', filename='img/voice-hero.svg') }}" alt="Audio analytics illustration">
+  </div>
 
-    button {
-      width: 100%;
-      padding: 12px;
-      background: #ff512f;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      font-weight: bold;
-      cursor: pointer;
-      transition: 0.3s;
-    }
+  <div class="auth-card">
+    <div class="brand auth-brand">
+      <span class="brand-mark">TF</span>
+      <span>TranscribeFlow</span>
+    </div>
+    <h2>Create account</h2>
+    <p class="muted">Start building your AI transcript history.</p>
 
-    button:hover {
-      background: #dd2476;
-      transform: scale(1.05);
-    }
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
 
-    a {
-      color: white;
-      text-decoration: none;
-    }
-  </style>
-</head>
+    <form method="POST" action="{{ url_for('register') }}" class="stack-form">
+      <label>Full name</label>
+      <input type="text" name="name" placeholder="Harikrishna" required>
+      <label>Email</label>
+      <input type="email" name="email" placeholder="you@example.com" required>
+      <label>Password</label>
+      <input type="password" name="password" placeholder="Create a password" required>
+      <button type="submit" class="btn btn-primary">Create workspace</button>
+    </form>
 
-<body>
-
-<div class="card">
-  <h2>Create Account</h2>
-
-  <form method="POST" action="/register">
-    <input type="text" name="name" placeholder="Full Name" required>
-    <input type="email" name="email" placeholder="Email" required>
-    <input type="password" name="password" placeholder="Password" required>
-    <button type="submit">Register</button>
-  </form>
-
-  <p>Already have account? <a href="/">Login</a></p>
-</div>
-
-</body>
-</html>
+    <p class="auth-switch">Already registered? <a href="{{ url_for('login_page') }}">Log in</a></p>
+  </div>
+</section>
+{% endblock %}
