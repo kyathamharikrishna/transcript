@@ -11,6 +11,23 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 
 > GitHub Pages hosts the static product preview. The full Whisper transcription app needs Flask, MySQL, and FFmpeg, so run it locally or deploy it to a Python hosting platform for the real backend.
 
+## Enable GitHub Live Preview
+
+The repo includes `.github/workflows/pages.yml`, which deploys the `docs/` folder to GitHub Pages.
+
+If the Pages workflow says `Get Pages site failed`, enable Pages once:
+
+1. Open `Settings` in the GitHub repository.
+2. Go to `Pages`.
+3. Under `Build and deployment`, set `Source` to `GitHub Actions`.
+4. Re-run the `GitHub Pages` workflow or push a new commit.
+
+Live preview URL:
+
+```text
+https://kyathamharikrishna.github.io/transcript/
+```
+
 ## Interview-Ready Features
 
 ### Tier 1
