@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: transcribeflow-ai
+    runtime: docker
+    plan: free
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      - key: DB_BACKEND
+        value: sqlite
+      - key: SQLITE_DB_PATH
+        value: uploads/transcriber/transcribeflow.sqlite
+      - key: WHISPER_MODEL
+        value: tiny
+      - key: WHISPER_FP16
+        value: "0"
+      - key: ENABLE_TRANSFORMERS_SUMMARY
+        value: "0"

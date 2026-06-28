@@ -4,3 +4,4 @@ openai-whisper
 torch
 transformers
 sentencepiece
+gunicorn

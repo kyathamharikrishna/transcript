@@ -1,6 +1,7 @@
 from datetime import datetime
 import json
 import os
+import sqlite3
 import threading
 import time
 import traceback
@@ -84,7 +85,50 @@ ASR_MODEL = None
 SCHEMA_READY = False
 
 
+def using_sqlite():
+    return os.getenv("DB_BACKEND", "mysql").lower() == "sqlite"
+
+
+def db_errors():
+    return (mysql.connector.Error, sqlite3.Error)
+
+
+def db_integrity_errors():
+    return (mysql.connector.IntegrityError, sqlite3.IntegrityError)
+
+
+def adapt_sql(query):
+    if using_sqlite():
+        return query.replace("%s", "?")
+    return query
+
+
+def get_cursor(conn, dictionary=False):
+    if using_sqlite():
+        return conn.cursor()
+    return conn.cursor(dictionary=dictionary)
+
+
+def row_to_dict(row):
+    if row is None:
+        return None
+    if isinstance(row, sqlite3.Row):
+        return dict(row)
+    return row
+
+
+def rows_to_dicts(rows):
+    return [row_to_dict(row) for row in rows]
+
+
 def get_db_connection():
+    if using_sqlite():
+        db_path = os.getenv("SQLITE_DB_PATH", os.path.join(BASE_FOLDER, "transcribeflow.sqlite"))
+        os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+
     return mysql.connector.connect(
         host=os.getenv("DB_HOST", "localhost"),
         user=os.getenv("DB_USER", "root"),
@@ -101,6 +145,64 @@ def ensure_database_schema():
 
     conn = get_db_connection()
     cursor = conn.cursor()
+
+    if using_sqlite():
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password TEXT NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS transcriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email TEXT,
+                job_id TEXT,
+                original_filename TEXT,
+                audio_file TEXT,
+                transcript_file TEXT,
+                summary_file TEXT,
+                json_file TEXT,
+                combined_file TEXT,
+                srt_file TEXT,
+                detected_language TEXT,
+                duration_seconds REAL DEFAULT 0,
+                word_count INTEGER DEFAULT 0,
+                processing_seconds REAL DEFAULT 0,
+                action_items_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+        cursor.execute("PRAGMA table_info(transcriptions)")
+        existing_columns = {row["name"] for row in cursor.fetchall()}
+        additions = {
+            "job_id": "TEXT",
+            "original_filename": "TEXT",
+            "combined_file": "TEXT",
+            "srt_file": "TEXT",
+            "detected_language": "TEXT",
+            "duration_seconds": "REAL DEFAULT 0",
+            "word_count": "INTEGER DEFAULT 0",
+            "processing_seconds": "REAL DEFAULT 0",
+            "action_items_count": "INTEGER DEFAULT 0",
+        }
+
+        for column, definition in additions.items():
+            if column not in existing_columns:
+                cursor.execute(f"ALTER TABLE transcriptions ADD COLUMN {column} {definition}")
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        SCHEMA_READY = True
+        return
 
     cursor.execute(
         """
@@ -205,9 +307,10 @@ def create_job(user_email, original_filename):
 def insert_transcription_record(record):
     ensure_database_schema()
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = get_cursor(conn)
     cursor.execute(
-        """
+        adapt_sql(
+            """
         INSERT INTO transcriptions
         (
             user_email,
@@ -226,7 +329,8 @@ def insert_transcription_record(record):
             action_items_count
         )
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
+        """
+        ),
         (
             record["user_email"],
             record["job_id"],
@@ -254,17 +358,19 @@ def insert_transcription_record(record):
 def get_transcription_by_job(job_id, user_email):
     ensure_database_schema()
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn, dictionary=True)
     cursor.execute(
-        """
+        adapt_sql(
+            """
         SELECT *
         FROM transcriptions
         WHERE job_id = %s AND user_email = %s
         LIMIT 1
-        """,
+        """
+        ),
         (job_id, user_email),
     )
-    record = cursor.fetchone()
+    record = row_to_dict(cursor.fetchone())
     cursor.close()
     conn.close()
     return record
@@ -273,9 +379,10 @@ def get_transcription_by_job(job_id, user_email):
 def get_history(user_email, limit=50):
     ensure_database_schema()
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn, dictionary=True)
     cursor.execute(
-        """
+        adapt_sql(
+            """
         SELECT
             id,
             job_id,
@@ -296,10 +403,11 @@ def get_history(user_email, limit=50):
         WHERE user_email = %s
         ORDER BY created_at DESC
         LIMIT %s
-        """,
+        """
+        ),
         (user_email, limit),
     )
-    records = cursor.fetchall()
+    records = rows_to_dicts(cursor.fetchall())
     cursor.close()
     conn.close()
 
@@ -312,9 +420,10 @@ def get_history(user_email, limit=50):
 def get_dashboard_stats(user_email):
     ensure_database_schema()
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn, dictionary=True)
     cursor.execute(
-        """
+        adapt_sql(
+            """
         SELECT
             COUNT(*) AS total_transcriptions,
             COALESCE(SUM(word_count), 0) AS total_words,
@@ -322,10 +431,11 @@ def get_dashboard_stats(user_email):
             COALESCE(SUM(duration_seconds), 0) AS total_seconds
         FROM transcriptions
         WHERE user_email = %s
-        """,
+        """
+        ),
         (user_email,),
     )
-    stats = cursor.fetchone() or {}
+    stats = row_to_dict(cursor.fetchone()) or {}
     cursor.close()
     conn.close()
     stats["total_duration_label"] = format_duration(stats.get("total_seconds") or 0)
@@ -576,7 +686,7 @@ def dashboard_context(user_email, limit=5):
             "stats": get_dashboard_stats(user_email),
             "db_error": None,
         }
-    except mysql.connector.Error as exc:
+    except db_errors() as exc:
         return {
             "recent_records": [],
             "stats": {
@@ -612,17 +722,17 @@ def register():
     try:
         ensure_database_schema()
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = get_cursor(conn)
         cursor.execute(
-            "INSERT INTO users (name, email, password) VALUES (%s, %s, %s)",
+            adapt_sql("INSERT INTO users (name, email, password) VALUES (%s, %s, %s)"),
             (name, email, password),
         )
         conn.commit()
         cursor.close()
         conn.close()
-    except mysql.connector.IntegrityError:
+    except db_integrity_errors():
         return render_template("register.html", error="An account already exists for this email.")
-    except mysql.connector.Error as exc:
+    except db_errors() as exc:
         return render_template("register.html", error=f"Database error: {exc}")
 
     return redirect(url_for("login_page"))
@@ -636,16 +746,16 @@ def login():
     try:
         ensure_database_schema()
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
-        user = cursor.fetchone()
+        cursor = get_cursor(conn, dictionary=True)
+        cursor.execute(adapt_sql("SELECT * FROM users WHERE email = %s"), (email,))
+        user = row_to_dict(cursor.fetchone())
         if user:
             stored_password = user.get("password") or ""
             password_ok = check_password_hash(stored_password, password)
             if not password_ok and stored_password == password:
                 password_ok = True
                 cursor.execute(
-                    "UPDATE users SET password = %s WHERE email = %s",
+                    adapt_sql("UPDATE users SET password = %s WHERE email = %s"),
                     (generate_password_hash(password), email),
                 )
                 conn.commit()
@@ -653,7 +763,7 @@ def login():
             password_ok = False
         cursor.close()
         conn.close()
-    except mysql.connector.Error as exc:
+    except db_errors() as exc:
         return render_template("login.html", error=f"Database error: {exc}")
 
     if user and password_ok:
@@ -685,7 +795,7 @@ def history():
     try:
         records = get_history(session["user_email"], limit=100)
         db_error = None
-    except mysql.connector.Error as exc:
+    except db_errors() as exc:
         records = []
         db_error = str(exc)
 
@@ -821,17 +931,19 @@ def download_file(filetype, filename):
     folder, column = DOWNLOADS[filetype]
     ensure_database_schema()
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cursor = get_cursor(conn, dictionary=True)
     cursor.execute(
-        f"""
+        adapt_sql(
+            f"""
         SELECT id
         FROM transcriptions
         WHERE user_email = %s AND {column} = %s
         LIMIT 1
-        """,
+        """
+        ),
         (session["user_email"], filename),
     )
-    record = cursor.fetchone()
+    record = row_to_dict(cursor.fetchone())
     cursor.close()
     conn.close()
 
@@ -841,6 +953,11 @@ def download_file(filetype, filename):
     return send_from_directory(folder, filename, as_attachment=True, download_name=filename)
 
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "database": "sqlite" if using_sqlite() else "mysql"})
+
+
 @app.route("/logout")
 def logout():
     session.clear()
@@ -848,4 +965,9 @@ def logout():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, threaded=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "5000")),
+        debug=os.getenv("FLASK_DEBUG", "0") == "1",
+        threaded=True,
+    )

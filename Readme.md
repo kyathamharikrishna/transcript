@@ -7,28 +7,36 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 ![Flask](https://img.shields.io/badge/Flask-AI%20SaaS-black.svg)
 
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
-- **Live Preview:** https://kyathamharikrishna.github.io/transcript/
+- **Render Live App:** deploy with `render.yaml` from this repo
 
-> GitHub Pages hosts the static product preview. The full Whisper transcription app needs Flask, MySQL, and FFmpeg, so run it locally or deploy it to a Python hosting platform for the real backend.
+> Render hosts the real Flask backend. The included `render.yaml` uses Docker, installs FFmpeg, starts Gunicorn, and defaults to SQLite demo mode so the app can boot without a separate MySQL service.
 
-## Enable GitHub Live Preview
+## Deploy Live on Render
 
-The repo includes a static preview in the `docs/` folder. Use GitHub Pages classic branch deployment, which avoids Node/action version issues.
+This repository includes:
 
-Enable it once:
+- `Dockerfile` — installs Python dependencies and FFmpeg
+- `render.yaml` — Render Blueprint for one-click deployment
+- `/health` — health-check endpoint for Render
+- `DB_BACKEND=sqlite` — demo database mode for live hosting without MySQL
 
-1. Open `Settings` in the GitHub repository.
-2. Go to `Pages`.
-3. Under `Build and deployment`, set `Source` to `Deploy from a branch`.
-4. Set `Branch` to `main`.
-5. Set folder to `/docs`.
-6. Click `Save`.
+### Render Steps
 
-Live preview URL:
+1. Open [Render](https://render.com/).
+2. Click `New` → `Blueprint`.
+3. Connect this repository: `kyathamharikrishna/transcript`.
+4. Render will detect `render.yaml`.
+5. Click `Apply`.
+6. Wait for the Docker build to finish.
+7. Open the generated Render URL.
+
+Expected URL if the service name is available:
 
 ```text
-https://kyathamharikrishna.github.io/transcript/
+https://transcribeflow-ai.onrender.com
 ```
+
+Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
 
 ## Interview-Ready Features
 
@@ -55,7 +63,7 @@ https://kyathamharikrishna.github.io/transcript/
 
 - **Frontend:** HTML, CSS, JavaScript, Font Awesome, responsive glassmorphism UI
 - **Backend:** Python, Flask, background threads, OpenAI Whisper
-- **Database:** MySQL
+- **Database:** MySQL locally, SQLite demo mode on Render
 - **AI/NLP:** Whisper ASR, extractive summarizer, optional Transformers summary, optional Anthropic Claude Q&A
 - **Exports:** TXT report, JSON payload, SRT captions
 
@@ -69,6 +77,9 @@ transcript/
 ├── transcription_features.py
 ├── schema.sql
 ├── requirements.txt
+├── Dockerfile
+├── render.yaml
+├── docs/
 ├── static/
 │   ├── css/app.css
 │   ├── js/app.js
@@ -146,6 +157,8 @@ transcript/
 ## Database Notes
 
 - `app.py` automatically creates missing tables and adds new columns for upgraded projects.
+- Local development uses MySQL by default.
+- Render uses SQLite demo mode through `DB_BACKEND=sqlite` in `render.yaml`.
 - New passwords are stored with Werkzeug password hashing.
 - Existing plaintext passwords are migrated to hashed passwords the next time the user logs in successfully.
 
@@ -161,6 +174,8 @@ transcript/
 
 - `WHISPER_MODEL` — Whisper model name, default `small`
 - `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
+- `DB_BACKEND` — set `sqlite` for Render/demo mode or leave as `mysql` for local MySQL
+- `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
 - `ANTHROPIC_MODEL` — overrides the Claude model used by Q&A
