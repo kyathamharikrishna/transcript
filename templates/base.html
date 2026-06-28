@@ -10,6 +10,9 @@
 <body class="{% block body_class %}{% endblock %}">
   <div class="ambient ambient-one"></div>
   <div class="ambient ambient-two"></div>
+  <div class="ambient ambient-three"></div>
+  <div class="grid-overlay"></div>
+  <div class="cursor-glow" id="cursorGlow"></div>
 
   {% if session.get("user_email") %}
   <nav class="app-nav">
@@ -20,6 +23,7 @@
     <div class="nav-links">
       <a href="{{ url_for('dashboard') }}">Dashboard</a>
       <a href="{{ url_for('history') }}">History</a>
+      <a href="https://transcribeflow-ai.onrender.com/" target="_blank" rel="noreferrer">Live</a>
       <a class="nav-pill" href="{{ url_for('logout') }}">Logout</a>
     </div>
   </nav>

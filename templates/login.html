@@ -5,14 +5,26 @@
 
 {% block content %}
 <section class="auth-layout">
-  <div class="auth-copy">
+  <div class="auth-copy reveal">
     <span class="eyebrow">AI meeting intelligence</span>
     <h1>Turn audio into searchable decisions, actions, and subtitles.</h1>
     <p>Upload a recording, track progress in the background, ask questions, and export clean reports for your team.</p>
-    <img class="hero-illustration" src="{{ url_for('static', filename='img/voice-hero.svg') }}" alt="Audio waveform dashboard illustration">
+    <div class="auth-showcase">
+      <div class="mini-console">
+        <span class="status-dot"></span>
+        <code>[00:01:23] Speaker 1: budget finalized by Friday</code>
+      </div>
+      <div class="code-orbit compact-orbit" aria-label="Rotating transcript intelligence graphic">
+        <div class="orbit-ring ring-one"></div>
+        <div class="orbit-ring ring-two"></div>
+        <div class="code-card code-card-one"><small>ASR</small><code>word_timestamps=True</code></div>
+        <div class="code-card code-card-two"><small>NLP</small><code>extract(action_items)</code></div>
+        <div class="orb-core"><i class="fa-solid fa-wave-square"></i></div>
+      </div>
+    </div>
   </div>
 
-  <div class="auth-card">
+  <div class="auth-card reveal">
     <div class="brand auth-brand">
       <span class="brand-mark">TF</span>
       <span>TranscribeFlow</span>

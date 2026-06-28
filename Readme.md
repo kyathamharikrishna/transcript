@@ -59,6 +59,11 @@ Render free instances can sleep after inactivity. First load after sleep may tak
 - **Copy-to-clipboard buttons** — copy transcript and summary in one click.
 - **Confidence highlights** — low-confidence Whisper words are highlighted so users can review uncertain text.
 
+### Frontend Experience
+
+- **Advanced animated UI** — neon glassmorphism, responsive cards, rotating code-orbit visuals, cursor glow, reveal-on-scroll transitions, and real SaaS-style dashboard sections.
+- **Production-minded UX** — accessible reduced-motion handling, live progress feedback, polished empty states, download actions, and mobile-responsive layouts.
+
 ## Tech Stack
 
 - **Frontend:** HTML, CSS, JavaScript, Font Awesome, responsive glassmorphism UI

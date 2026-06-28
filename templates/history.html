@@ -3,11 +3,15 @@
 {% block title %}History | TranscribeFlow AI{% endblock %}
 
 {% block content %}
-<section class="panel page-header">
+<section class="panel page-header vault-header reveal">
   <div>
     <span class="eyebrow">Transcript vault</span>
     <h1>History dashboard</h1>
     <p class="muted">Review every processed file, reopen analysis, or download reports and subtitles.</p>
+  </div>
+  <div class="vault-visual" aria-hidden="true">
+    <span></span><span></span><span></span>
+    <i class="fa-solid fa-database"></i>
   </div>
   <a class="btn btn-primary" href="{{ url_for('dashboard') }}"><i class="fa-solid fa-plus"></i> New transcript</a>
 </section>
@@ -16,7 +20,7 @@
 <div class="alert alert-error">Database warning: {{ db_error }}</div>
 {% endif %}
 
-<section class="panel">
+<section class="panel reveal">
   {% if records %}
   <div class="table-wrap">
     <table>

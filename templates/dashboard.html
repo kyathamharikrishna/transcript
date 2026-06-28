@@ -4,10 +4,16 @@
 
 {% block content %}
 <section class="dashboard-hero">
-  <div class="panel upload-panel">
+  <div class="panel upload-panel reveal">
     <span class="eyebrow">Async Whisper Pipeline</span>
     <h1>Upload audio. Watch it process. Ask it anything.</h1>
     <p class="muted">TranscribeFlow now creates timestamped transcripts, summaries, action items, SRT captions, confidence highlights, and searchable Q&A.</p>
+
+    <div class="hero-kpis">
+      <span><i class="fa-solid fa-bolt"></i> Background jobs</span>
+      <span><i class="fa-solid fa-brain"></i> Transcript RAG</span>
+      <span><i class="fa-solid fa-shield-halved"></i> Secure history</span>
+    </div>
 
     {% if db_error %}
     <div class="alert alert-error">Database warning: {{ db_error }}</div>
@@ -58,8 +64,38 @@
     </div>
   </div>
 
-  <div class="panel hero-panel">
-    <img src="{{ url_for('static', filename='img/voice-hero.svg') }}" alt="Transcript product dashboard">
+  <div class="panel hero-panel reveal">
+    <div class="ai-console">
+      <div class="console-top">
+        <span></span><span></span><span></span>
+        <strong>transcribeflow.pipeline</strong>
+      </div>
+      <div class="code-orbit" aria-label="Rotating AI code design">
+        <div class="orbit-ring ring-one"></div>
+        <div class="orbit-ring ring-two"></div>
+        <div class="code-card code-card-one">
+          <small>Whisper</small>
+          <code>segments = transcribe(audio)</code>
+        </div>
+        <div class="code-card code-card-two">
+          <small>Extractor</small>
+          <code>actions = detect(deadline|todo)</code>
+        </div>
+        <div class="code-card code-card-three">
+          <small>RAG</small>
+          <code>answer = ask(transcript)</code>
+        </div>
+        <div class="orb-core">
+          <i class="fa-solid fa-microphone-lines"></i>
+        </div>
+      </div>
+      <div class="pipeline-steps">
+        <span class="active">Upload</span>
+        <span>Transcribe</span>
+        <span>Analyze</span>
+        <span>Export</span>
+      </div>
+    </div>
     <div class="feature-cloud">
       <span><i class="fa-regular fa-clock"></i> Timestamped</span>
       <span><i class="fa-solid fa-list-check"></i> Action items</span>
@@ -70,25 +106,25 @@
 </section>
 
 <section class="metric-grid">
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Total files</span>
     <strong>{{ stats.total_transcriptions or 0 }}</strong>
   </div>
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Words captured</span>
     <strong>{{ stats.total_words or 0 }}</strong>
   </div>
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Action items</span>
     <strong>{{ stats.total_actions or 0 }}</strong>
   </div>
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Audio processed</span>
     <strong>{{ stats.total_duration_label }}</strong>
   </div>
 </section>
 
-<section class="panel">
+<section class="panel reveal">
   <div class="section-heading">
     <div>
       <span class="eyebrow">Recent work</span>

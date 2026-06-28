@@ -5,14 +5,26 @@
 
 {% block content %}
 <section class="auth-layout">
-  <div class="auth-copy">
+  <div class="auth-copy reveal">
     <span class="eyebrow">Build your transcript vault</span>
     <h1>Capture every useful line from meetings, lectures, and interviews.</h1>
     <p>Your dashboard keeps timestamped transcripts, action items, summaries, SRT captions, and Q&A in one place.</p>
-    <img class="hero-illustration" src="{{ url_for('static', filename='img/voice-hero.svg') }}" alt="Audio analytics illustration">
+    <div class="auth-showcase">
+      <div class="mini-console">
+        <span class="status-dot"></span>
+        <code>pipeline.ready → upload, summarize, export</code>
+      </div>
+      <div class="code-orbit compact-orbit" aria-label="Rotating SaaS analytics graphic">
+        <div class="orbit-ring ring-one"></div>
+        <div class="orbit-ring ring-two"></div>
+        <div class="code-card code-card-one"><small>Vault</small><code>history.save(report)</code></div>
+        <div class="code-card code-card-two"><small>Export</small><code>create_srt(segments)</code></div>
+        <div class="orb-core"><i class="fa-solid fa-chart-line"></i></div>
+      </div>
+    </div>
   </div>
 
-  <div class="auth-card">
+  <div class="auth-card reveal">
     <div class="brand auth-brand">
       <span class="brand-mark">TF</span>
       <span>TranscribeFlow</span>

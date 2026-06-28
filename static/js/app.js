@@ -213,7 +213,76 @@ function setupQa() {
   });
 }
 
+function setupCursorGlow() {
+  const glow = document.getElementById("cursorGlow");
+  if (!glow || window.matchMedia("(pointer: coarse)").matches) return;
+
+  let frame;
+  document.body.classList.add("has-pointer");
+
+  window.addEventListener("pointermove", (event) => {
+    if (frame) cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      const x = `${event.clientX}px`;
+      const y = `${event.clientY}px`;
+      glow.style.left = x;
+      glow.style.top = y;
+      document.documentElement.style.setProperty("--mouse-x", x);
+      document.documentElement.style.setProperty("--mouse-y", y);
+    });
+  });
+}
+
+function setupReveals() {
+  const revealItems = document.querySelectorAll(".reveal");
+  if (!revealItems.length) return;
+
+  if (!("IntersectionObserver" in window)) {
+    revealItems.forEach((item) => item.classList.add("revealed"));
+    return;
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add("revealed");
+        observer.unobserve(entry.target);
+      });
+    },
+    { threshold: 0.14 }
+  );
+
+  revealItems.forEach((item, index) => {
+    item.style.transitionDelay = `${Math.min(index * 45, 220)}ms`;
+    observer.observe(item);
+  });
+}
+
+function setupTiltCards() {
+  const cards = document.querySelectorAll(".panel, .metric-card, .auth-card");
+  if (!cards.length || window.matchMedia("(pointer: coarse)").matches) return;
+
+  cards.forEach((card) => {
+    card.addEventListener("pointermove", (event) => {
+      const rect = card.getBoundingClientRect();
+      const x = (event.clientX - rect.left) / rect.width - 0.5;
+      const y = (event.clientY - rect.top) / rect.height - 0.5;
+      card.style.setProperty("--tilt-x", `${(-y * 3).toFixed(2)}deg`);
+      card.style.setProperty("--tilt-y", `${(x * 3).toFixed(2)}deg`);
+      card.style.transform = "perspective(900px) rotateX(var(--tilt-x)) rotateY(var(--tilt-y))";
+    });
+
+    card.addEventListener("pointerleave", () => {
+      card.style.transform = "";
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+  setupCursorGlow();
+  setupReveals();
+  setupTiltCards();
   setupUploadForm();
   setupRecorder();
   setupCopyButtons();

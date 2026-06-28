@@ -3,7 +3,7 @@
 {% block title %}Transcript Result | TranscribeFlow AI{% endblock %}
 
 {% block content %}
-<section class="panel page-header result-header">
+<section class="panel page-header result-header reveal">
   <div>
     <span class="eyebrow">Completed analysis</span>
     <h1>{{ payload.original_filename or "Transcript result" }}</h1>
@@ -17,26 +17,34 @@
 </section>
 
 <section class="metric-grid">
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Language</span>
     <strong>{{ stats.detected_language or payload.detected_language or "Unknown" }}</strong>
   </div>
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Duration</span>
     <strong>{{ stats.duration_label or "0s" }}</strong>
   </div>
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Words</span>
     <strong>{{ stats.word_count or 0 }}</strong>
   </div>
-  <div class="metric-card">
+  <div class="metric-card reveal">
     <span>Processed in</span>
     <strong>{{ stats.processing_seconds or 0 }}s</strong>
   </div>
 </section>
 
+<section class="insight-strip reveal">
+  <div>
+    <span>Analysis map</span>
+    <strong>Transcript → Summary → Actions → Q&A → Export</strong>
+  </div>
+  <div class="strip-pulse"><span></span><span></span><span></span><span></span><span></span></div>
+</section>
+
 <section class="result-grid">
-  <div class="panel transcript-panel">
+  <div class="panel transcript-panel reveal">
     <div class="section-heading">
       <div>
         <span class="eyebrow">Speaker-labelled transcript</span>
@@ -72,7 +80,7 @@
   </div>
 
   <aside class="side-stack">
-    <div class="panel">
+    <div class="panel reveal">
       <div class="section-heading compact">
         <div>
           <span class="eyebrow">Smart summary</span>
@@ -83,7 +91,7 @@
       <p id="summaryText" class="summary-text">{{ payload.summary or "No summary generated." }}</p>
     </div>
 
-    <div class="panel">
+    <div class="panel reveal">
       <span class="eyebrow">Keyword extraction</span>
       <h2>Action items</h2>
       {% if action_items %}
@@ -105,7 +113,7 @@
       {% endif %}
     </div>
 
-    <div class="panel qa-panel">
+    <div class="panel qa-panel reveal">
       <span class="eyebrow">RAG on your transcript</span>
       <h2>Ask the transcript</h2>
       <form id="qaForm" data-job-id="{{ payload.job_id }}">
