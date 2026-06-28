@@ -15,11 +15,13 @@ services:
       - key: SQLITE_DB_PATH
         value: uploads/transcriber/transcribeflow.sqlite
       - key: TRANSCRIPTION_BACKEND
-        value: openai
+        value: vosk
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_TRANSCRIBE_MODEL
         value: whisper-1
+      - key: VOSK_MODEL_PATH
+        value: uploads/transcriber/models/vosk-model-small-en-us-0.15
       - key: WHISPER_FP16
         value: "0"
       - key: ENABLE_TRANSFORMERS_SUMMARY

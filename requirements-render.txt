@@ -2,3 +2,4 @@ flask
 mysql-connector-python
 gunicorn
 requests
+vosk
