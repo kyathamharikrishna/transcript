@@ -19,6 +19,7 @@ This repository includes:
 - `render.yaml` — Render Blueprint for one-click deployment
 - `/health` — health-check endpoint for Render
 - `DB_BACKEND=sqlite` — demo database mode for live hosting without MySQL
+- `TRANSCRIPTION_BACKEND=demo` — Render-safe upload flow that avoids loading Whisper/Torch on the free tier
 
 ### Render Steps
 
@@ -37,6 +38,8 @@ https://transcribeflow-ai.onrender.com/
 ```
 
 Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
+
+The Render free service uses `TRANSCRIPTION_BACKEND=demo` to prevent memory-limit restarts. For full Whisper transcription, run locally with the default `TRANSCRIPTION_BACKEND=whisper` or upgrade the Render instance and change the environment variable to `whisper`.
 
 ## Interview-Ready Features
 
@@ -164,6 +167,8 @@ transcript/
 - `app.py` automatically creates missing tables and adds new columns for upgraded projects.
 - Local development uses MySQL by default.
 - Render uses SQLite demo mode through `DB_BACKEND=sqlite` in `render.yaml`.
+- Local development uses real Whisper by default through `TRANSCRIPTION_BACKEND=whisper`.
+- Render free uses `TRANSCRIPTION_BACKEND=demo` so login, upload, history, exports, and UI can be demonstrated without memory crashes.
 - New passwords are stored with Werkzeug password hashing.
 - Existing plaintext passwords are migrated to hashed passwords the next time the user logs in successfully.
 
@@ -181,6 +186,7 @@ transcript/
 - `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
 - `DB_BACKEND` — set `sqlite` for Render/demo mode or leave as `mysql` for local MySQL
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
+- `TRANSCRIPTION_BACKEND` — use `whisper` for real local transcription, or `demo` for Render free-tier stability
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
 - `ANTHROPIC_MODEL` — overrides the Claude model used by Q&A

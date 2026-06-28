@@ -279,6 +279,47 @@ def get_asr_model():
     return ASR_MODEL
 
 
+def transcription_backend():
+    return os.getenv("TRANSCRIPTION_BACKEND", "whisper").lower()
+
+
+def create_demo_transcription_result(original_filename, forced_language):
+    language = forced_language if forced_language and forced_language != "auto" else "en"
+    demo_segments = [
+        {
+            "start": 0.0,
+            "end": 4.0,
+            "text": f"Render demo mode received the file {original_filename}.",
+            "words": [
+                {"word": "Render", "start": 0.0, "end": 0.5, "probability": 0.98},
+                {"word": " demo", "start": 0.5, "end": 1.0, "probability": 0.98},
+                {"word": " mode", "start": 1.0, "end": 1.4, "probability": 0.98},
+                {"word": " received", "start": 1.4, "end": 2.1, "probability": 0.98},
+                {"word": " the", "start": 2.1, "end": 2.3, "probability": 0.98},
+                {"word": " file", "start": 2.3, "end": 2.8, "probability": 0.98},
+                {"word": f" {original_filename}.", "start": 2.8, "end": 4.0, "probability": 0.98},
+            ],
+        },
+        {
+            "start": 4.0,
+            "end": 9.0,
+            "text": "The live Render service uses a lightweight backend to avoid free-tier memory crashes.",
+            "words": [],
+        },
+        {
+            "start": 9.0,
+            "end": 15.0,
+            "text": "Action item: run the project locally or upgrade Render to use full Whisper transcription by Friday.",
+            "words": [],
+        },
+    ]
+    return {
+        "text": " ".join(segment["text"] for segment in demo_segments),
+        "language": language,
+        "segments": demo_segments,
+    }
+
+
 def set_job(job_id, **updates):
     with JOBS_LOCK:
         if job_id in JOBS:
@@ -546,21 +587,37 @@ def process_transcription_job(
     started_at = time.perf_counter()
 
     try:
+        backend = transcription_backend()
         set_job(
             job_id,
             status="processing",
             progress=18,
-            message="Loading Whisper and reading the audio",
+            message="Preparing audio for transcription",
         )
 
-        options = {
-            "word_timestamps": True,
-            "fp16": os.getenv("WHISPER_FP16", "0") == "1",
-        }
-        if forced_language and forced_language != "auto":
-            options["language"] = forced_language
+        if backend == "demo":
+            set_job(
+                job_id,
+                status="processing",
+                progress=45,
+                message="Render demo backend is generating a safe preview",
+            )
+            result = create_demo_transcription_result(original_filename, forced_language)
+        else:
+            set_job(
+                job_id,
+                status="processing",
+                progress=35,
+                message="Loading Whisper and reading the audio",
+            )
+            options = {
+                "word_timestamps": True,
+                "fp16": os.getenv("WHISPER_FP16", "0") == "1",
+            }
+            if forced_language and forced_language != "auto":
+                options["language"] = forced_language
 
-        result = get_asr_model().transcribe(audio_path, **options)
+            result = get_asr_model().transcribe(audio_path, **options)
 
         set_job(
             job_id,
@@ -618,6 +675,7 @@ def process_transcription_job(
             "summary": summary,
             "detected_language": detected_language,
             "detected_language_code": detected_language_code,
+            "transcription_backend": backend,
             "segments": segments,
             "action_items": action_items,
             "files": files,
