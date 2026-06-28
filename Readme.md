@@ -28,7 +28,7 @@ This repository includes:
 2. Click `New` → `Blueprint`.
 3. Connect this repository: `kyathamharikrishna/transcript`.
 4. Render will detect `render.yaml`.
-5. Add the secret environment variable `OPENAI_API_KEY`.
+5. Add a real secret environment variable `OPENAI_API_KEY` from your OpenAI account. Do not use placeholder values like `your_openai_key`.
 6. Click `Apply`.
 7. Wait for the Docker build to finish.
 8. Open the generated Render URL.

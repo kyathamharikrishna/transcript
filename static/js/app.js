@@ -52,7 +52,7 @@ async function pollJob(statusUrl) {
   }
 
   if (job.status === "failed") {
-    setProgress(100, job.error || "Processing failed.");
+    setProgress(0, job.error || "Processing failed.");
     return;
   }
 
@@ -60,7 +60,7 @@ async function pollJob(statusUrl) {
 }
 
 function showUploadError(error) {
-  setProgress(100, error.message || "Something went wrong.");
+  setProgress(0, error.message || "Something went wrong.");
 }
 
 async function startUpload(formData) {

@@ -351,13 +351,35 @@ def normalize_api_segments(payload):
     }
 
 
+def openai_key_help_message():
+    return (
+        "Render OPENAI_API_KEY is invalid or still a placeholder. "
+        "Open Render Dashboard → transcribeflow-ai → Environment, replace OPENAI_API_KEY "
+        "with a real OpenAI API key, save changes, then redeploy."
+    )
+
+
+def is_placeholder_openai_key(api_key):
+    normalized = (api_key or "").strip().lower()
+    if not normalized:
+        return True
+
+    placeholder_markers = (
+        "your_",
+        "your-",
+        "replace",
+        "placeholder",
+        "example",
+        "dummy",
+        "test-key",
+    )
+    return any(marker in normalized for marker in placeholder_markers)
+
+
 def transcribe_with_openai_api(audio_path, forced_language):
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "OPENAI_API_KEY is missing in Render. Add it in Render environment variables "
-            "for live transcription, or run locally with TRANSCRIPTION_BACKEND=whisper."
-        )
+    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if is_placeholder_openai_key(api_key):
+        raise RuntimeError(openai_key_help_message())
 
     import requests
 
@@ -386,6 +408,11 @@ def transcribe_with_openai_api(audio_path, forced_language):
             details = response.json()
         except ValueError:
             details = response.text[:500]
+
+        api_error = details.get("error", {}) if isinstance(details, dict) else {}
+        if response.status_code == 401 or api_error.get("code") == "invalid_api_key":
+            raise RuntimeError(openai_key_help_message())
+
         raise RuntimeError(f"Transcription API failed: {details}")
 
     return normalize_api_segments(response.json())
@@ -813,7 +840,7 @@ def process_transcription_job(
         set_job(
             job_id,
             status="failed",
-            progress=100,
+            progress=0,
             message="Processing failed",
             error=str(exc),
             traceback=traceback.format_exc(),
