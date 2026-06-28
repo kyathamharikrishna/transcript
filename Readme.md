@@ -9,18 +9,18 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
 - **Render Live App:** https://transcribeflow-ai.onrender.com/
 
-> Render hosts the real Flask backend with a lightweight transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite, and runs Vosk transcription instead of loading Whisper/Torch on the free instance.
+> Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite, and sends audio to the OpenAI transcription API instead of loading Whisper/Torch on the free instance.
 
 ## Deploy Live on Render
 
 This repository includes:
 
 - `Dockerfile` — starts the lightweight Render web service
-- `requirements-render.txt` — lightweight Render dependencies with Vosk, without Torch/Whisper
+- `requirements-render.txt` — lightweight Render dependencies without Torch/Whisper
 - `render.yaml` — Render Blueprint for one-click deployment
 - `/health` — health-check endpoint for Render
 - `DB_BACKEND=sqlite` — lightweight live database mode without MySQL
-- `TRANSCRIPTION_BACKEND=vosk` — Render-safe real transcription flow without Torch/Whisper memory crashes
+- `TRANSCRIPTION_BACKEND=openai` — Render-safe real transcription flow without Torch/Whisper memory crashes
 
 ### Render Steps
 
@@ -28,7 +28,7 @@ This repository includes:
 2. Click `New` → `Blueprint`.
 3. Connect this repository: `kyathamharikrishna/transcript`.
 4. Render will detect `render.yaml`.
-5. Optional: add `OPENAI_API_KEY` and set `TRANSCRIPTION_BACKEND=openai` for higher-accuracy API transcription.
+5. Add the secret environment variable `OPENAI_API_KEY`.
 6. Click `Apply`.
 7. Wait for the Docker build to finish.
 8. Open the generated Render URL.
@@ -41,7 +41,7 @@ https://transcribeflow-ai.onrender.com/
 
 Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
 
-The Render free service uses `TRANSCRIPTION_BACKEND=vosk` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`. For higher accuracy on Render, add `OPENAI_API_KEY` and set `TRANSCRIPTION_BACKEND=openai`.
+The Render free service uses `TRANSCRIPTION_BACKEND=openai` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
 
 ## Interview-Ready Features
 
@@ -170,7 +170,7 @@ transcript/
 - Local development uses MySQL by default.
 - Render uses SQLite mode through `DB_BACKEND=sqlite` in `render.yaml`.
 - Local development uses real Whisper by default through `TRANSCRIPTION_BACKEND=whisper`.
-- Render free uses `TRANSCRIPTION_BACKEND=vosk` so login, upload, history, exports, and UI work without memory crashes.
+- Render free uses `TRANSCRIPTION_BACKEND=openai` so login, upload, history, exports, and UI work without memory crashes.
 - New passwords are stored with Werkzeug password hashing.
 - Existing plaintext passwords are migrated to hashed passwords the next time the user logs in successfully.
 
@@ -188,10 +188,9 @@ transcript/
 - `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
 - `DB_BACKEND` — set `sqlite` for Render live mode or leave as `mysql` for local MySQL
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
-- `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `vosk` for Render free live transcription, `openai` for API transcription, or `auto` to choose OpenAI when a key exists
-- `OPENAI_API_KEY` — required only when `TRANSCRIPTION_BACKEND=openai`
+- `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
+- `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
 - `OPENAI_TRANSCRIBE_MODEL` — defaults to `whisper-1` for timestamped API transcription
-- `VOSK_MODEL_PATH` — local path for the lightweight Render Vosk model
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
 - `ANTHROPIC_MODEL` — overrides the Claude model used by Q&A

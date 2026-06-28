@@ -3,17 +3,11 @@ import importlib.util
 import json
 import mimetypes
 import os
-import shutil
-import subprocess
 import sqlite3
-import tempfile
 import threading
 import time
 import traceback
-import urllib.request
 import uuid
-import wave
-import zipfile
 
 from flask import (
     Flask,
@@ -89,7 +83,6 @@ DOWNLOADS = {
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 MODEL_LOCK = threading.Lock()
-VOSK_MODEL_LOCK = threading.Lock()
 ASR_MODEL = None
 SCHEMA_READY = False
 
@@ -302,10 +295,10 @@ def transcription_backend():
         return "openai"
 
     if backend in {"auto", "demo"}:
-        return "openai" if os.getenv("OPENAI_API_KEY") else "vosk"
+        return "openai" if render_runtime() or os.getenv("OPENAI_API_KEY") else "whisper"
 
     if backend == "whisper" and render_runtime() and os.getenv("ALLOW_RENDER_WHISPER", "0") != "1":
-        return "openai" if os.getenv("OPENAI_API_KEY") else "vosk"
+        return "openai"
 
     return backend
 
@@ -358,149 +351,12 @@ def normalize_api_segments(payload):
     }
 
 
-def vosk_model_path():
-    return os.getenv(
-        "VOSK_MODEL_PATH",
-        os.path.join(BASE_FOLDER, "models", "vosk-model-small-en-us-0.15"),
-    )
-
-
-def ensure_vosk_model():
-    model_path = vosk_model_path()
-    if os.path.isdir(model_path):
-        return model_path
-
-    with VOSK_MODEL_LOCK:
-        if os.path.isdir(model_path):
-            return model_path
-
-        model_url = os.getenv(
-            "VOSK_MODEL_URL",
-            "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
-        )
-        models_dir = os.path.dirname(model_path) or "."
-        os.makedirs(models_dir, exist_ok=True)
-        zip_path = os.path.join(models_dir, f"vosk-model-{uuid.uuid4().hex}.zip")
-
-        try:
-            urllib.request.urlretrieve(model_url, zip_path)
-            with zipfile.ZipFile(zip_path, "r") as archive:
-                archive.extractall(models_dir)
-        finally:
-            if os.path.exists(zip_path):
-                os.remove(zip_path)
-
-        if not os.path.isdir(model_path):
-            extracted = [
-                os.path.join(models_dir, name)
-                for name in os.listdir(models_dir)
-                if name.startswith("vosk-model") and os.path.isdir(os.path.join(models_dir, name))
-            ]
-            if extracted:
-                shutil.move(extracted[0], model_path)
-
-        if not os.path.isdir(model_path):
-            raise RuntimeError("Vosk model download failed. Set VOSK_MODEL_PATH or VOSK_MODEL_URL.")
-
-    return model_path
-
-
-def convert_audio_to_wav(audio_path):
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-    temp_file.close()
-    command = [
-        "ffmpeg",
-        "-y",
-        "-i",
-        audio_path,
-        "-ar",
-        "16000",
-        "-ac",
-        "1",
-        "-f",
-        "wav",
-        temp_file.name,
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=180)
-    if result.returncode != 0:
-        raise RuntimeError(f"Audio conversion failed: {result.stderr[-500:]}")
-    return temp_file.name
-
-
-def _segment_from_vosk_result(result):
-    text = (result.get("text") or "").strip()
-    words = result.get("result") or []
-    if not text and words:
-        text = " ".join(word.get("word", "") for word in words).strip()
-    if not text:
-        return None
-
-    start = float(words[0].get("start", 0)) if words else 0
-    end = float(words[-1].get("end", start + 1)) if words else start + 1
-    return {
-        "start": start,
-        "end": end,
-        "text": text,
-        "words": [
-            {
-                "word": (" " if index else "") + word.get("word", ""),
-                "start": word.get("start", start),
-                "end": word.get("end", end),
-                "probability": word.get("conf"),
-            }
-            for index, word in enumerate(words)
-        ],
-    }
-
-
-def transcribe_with_vosk(audio_path, forced_language):
-    from vosk import KaldiRecognizer, Model
-
-    if forced_language and forced_language not in {"auto", "en"}:
-        raise RuntimeError(
-            "Render free transcription currently supports English with Vosk. "
-            "Choose Auto/English, or set OPENAI_API_KEY and TRANSCRIPTION_BACKEND=openai for multilingual audio."
-        )
-
-    model = Model(ensure_vosk_model())
-    wav_path = convert_audio_to_wav(audio_path)
-    segments = []
-
-    try:
-        with wave.open(wav_path, "rb") as wav_file:
-            recognizer = KaldiRecognizer(model, wav_file.getframerate())
-            recognizer.SetWords(True)
-
-            while True:
-                data = wav_file.readframes(4000)
-                if len(data) == 0:
-                    break
-                if recognizer.AcceptWaveform(data):
-                    segment = _segment_from_vosk_result(json.loads(recognizer.Result()))
-                    if segment:
-                        segments.append(segment)
-
-            final_segment = _segment_from_vosk_result(json.loads(recognizer.FinalResult()))
-            if final_segment:
-                segments.append(final_segment)
-    finally:
-        if os.path.exists(wav_path):
-            os.remove(wav_path)
-
-    transcript = " ".join(segment["text"] for segment in segments).strip()
-    if not transcript:
-        raise RuntimeError("No speech was detected in the uploaded audio.")
-
-    language = forced_language if forced_language and forced_language != "auto" else "en"
-    return {"text": transcript, "language": language, "segments": segments}
-
-
 def transcribe_with_openai_api(audio_path, forced_language):
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "OPENAI_API_KEY is missing. Add it in Render environment variables, "
-            "or set TRANSCRIPTION_BACKEND=vosk for lightweight live transcription."
+            "OPENAI_API_KEY is missing in Render. Add it in Render environment variables "
+            "for live transcription, or run locally with TRANSCRIPTION_BACKEND=whisper."
         )
 
     import requests
@@ -803,9 +659,9 @@ def process_transcription_job(
 
     try:
         backend = transcription_backend()
-        if backend not in {"openai", "vosk", "whisper"}:
+        if backend not in {"openai", "whisper"}:
             raise RuntimeError(
-                f"Unsupported TRANSCRIPTION_BACKEND={backend}. Use whisper, vosk, openai, or auto."
+                f"Unsupported TRANSCRIPTION_BACKEND={backend}. Use whisper, openai, or auto."
             )
 
         if backend == "openai":
@@ -816,28 +672,11 @@ def process_transcription_job(
                 message="Sending audio to transcription API",
             )
             result = transcribe_with_openai_api(audio_path, forced_language)
-        elif backend == "vosk":
-            set_job(
-                job_id,
-                status="processing",
-                progress=35,
-                message="Running lightweight live transcription",
-            )
-            result = transcribe_with_vosk(audio_path, forced_language)
         elif backend == "whisper" and not whisper_available():
-            if not (render_runtime() or using_sqlite()):
-                raise RuntimeError(
-                    "Whisper is not installed. Run pip install -r requirements.txt, "
-                    "or set TRANSCRIPTION_BACKEND=vosk/openai."
-                )
-            backend = "vosk"
-            set_job(
-                job_id,
-                status="processing",
-                progress=45,
-                message="Whisper is unavailable, using lightweight transcription",
+            raise RuntimeError(
+                "Whisper is not installed. Run pip install -r requirements.txt, "
+                "or set TRANSCRIPTION_BACKEND=openai on Render."
             )
-            result = transcribe_with_vosk(audio_path, forced_language)
         else:
             set_job(
                 job_id,
