@@ -7,7 +7,7 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 ![Flask](https://img.shields.io/badge/Flask-AI%20SaaS-black.svg)
 
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
-- **Render Live App:** deploy with `render.yaml` from this repo
+- **Render Live App:** https://transcribeflow-ai.onrender.com/
 
 > Render hosts the real Flask backend. The included `render.yaml` uses Docker, installs FFmpeg, starts Gunicorn, and defaults to SQLite demo mode so the app can boot without a separate MySQL service.
 
@@ -30,10 +30,10 @@ This repository includes:
 6. Wait for the Docker build to finish.
 7. Open the generated Render URL.
 
-Expected URL if the service name is available:
+Live app URL:
 
 ```text
-https://transcribeflow-ai.onrender.com
+https://transcribeflow-ai.onrender.com/
 ```
 
 Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
