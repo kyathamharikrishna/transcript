@@ -13,14 +13,16 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 
 ## Enable GitHub Live Preview
 
-The repo includes `.github/workflows/pages.yml`, which deploys the `docs/` folder to GitHub Pages.
+The repo includes a static preview in the `docs/` folder. Use GitHub Pages classic branch deployment, which avoids Node/action version issues.
 
-If the Pages workflow says `Get Pages site failed`, enable Pages once:
+Enable it once:
 
 1. Open `Settings` in the GitHub repository.
 2. Go to `Pages`.
-3. Under `Build and deployment`, set `Source` to `GitHub Actions`.
-4. Re-run the `GitHub Pages` workflow or push a new commit.
+3. Under `Build and deployment`, set `Source` to `Deploy from a branch`.
+4. Set `Branch` to `main`.
+5. Set folder to `/docs`.
+6. Click `Save`.
 
 Live preview URL:
 
