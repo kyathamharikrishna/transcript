@@ -43,6 +43,8 @@ Render free instances can sleep after inactivity. First load after sleep may tak
 
 The Render free service uses `TRANSCRIPTION_BACKEND=openai` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
 
+If uploads fail with `insufficient_quota`, the code is working but the configured OpenAI account has no available transcription credits. Fix it by adding OpenAI billing/credits, replacing `OPENAI_API_KEY` with a key that has quota, or deploying with the full `requirements.txt` and `TRANSCRIPTION_BACKEND=whisper` on a paid server with enough memory.
+
 ## Interview-Ready Features
 
 ### Tier 1
@@ -195,6 +197,7 @@ transcript/
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
 - `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
 - `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
+- `OPENAI_FALLBACK_TO_WHISPER` — set `1` only on deployments that install Whisper/Torch and have enough memory for local fallback
 - `OPENAI_TRANSCRIBE_MODEL` — defaults to `whisper-1` for timestamped API transcription
 - `OPENAI_TRANSLATION_MODEL` — defaults to `gpt-4o-mini` for transcript translation
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization

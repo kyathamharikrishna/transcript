@@ -103,6 +103,10 @@ ASR_MODEL = None
 SCHEMA_READY = False
 
 
+class OpenAIQuotaError(RuntimeError):
+    pass
+
+
 def using_sqlite():
     return os.getenv("DB_BACKEND", "mysql").lower() == "sqlite"
 
@@ -381,6 +385,14 @@ def openai_key_help_message():
     )
 
 
+def openai_quota_help_message():
+    return (
+        "OpenAI transcription quota is exhausted for this API key. "
+        "Add billing or credits in the OpenAI dashboard, or deploy with "
+        "TRANSCRIPTION_BACKEND=whisper on a server that has enough memory for Whisper."
+    )
+
+
 def is_placeholder_openai_key(api_key):
     normalized = (api_key or "").strip().lower()
     if not normalized:
@@ -434,10 +446,27 @@ def transcribe_with_openai_api(audio_path, forced_language):
         api_error = details.get("error", {}) if isinstance(details, dict) else {}
         if response.status_code == 401 or api_error.get("code") == "invalid_api_key":
             raise RuntimeError(openai_key_help_message())
+        if (
+            response.status_code == 429
+            or api_error.get("code") == "insufficient_quota"
+            or api_error.get("type") == "insufficient_quota"
+            or "quota" in str(api_error.get("message", "")).lower()
+        ):
+            raise OpenAIQuotaError(openai_quota_help_message())
 
         raise RuntimeError(f"Transcription API failed: {details}")
 
     return normalize_api_segments(response.json())
+
+
+def transcribe_with_local_whisper(audio_path, forced_language):
+    options = {
+        "word_timestamps": True,
+        "fp16": os.getenv("WHISPER_FP16", "0") == "1",
+    }
+    if forced_language and forced_language != "auto":
+        options["language"] = forced_language
+    return get_asr_model().transcribe(audio_path, **options)
 
 
 def set_job(job_id, **updates):
@@ -747,7 +776,20 @@ def process_transcription_job(
                 progress=35,
                 message="Sending audio to transcription API",
             )
-            result = transcribe_with_openai_api(audio_path, forced_language)
+            try:
+                result = transcribe_with_openai_api(audio_path, forced_language)
+            except OpenAIQuotaError:
+                if whisper_available() and os.getenv("OPENAI_FALLBACK_TO_WHISPER", "1") == "1":
+                    set_job(
+                        job_id,
+                        status="processing",
+                        progress=42,
+                        message="API quota exhausted, falling back to local Whisper",
+                    )
+                    result = transcribe_with_local_whisper(audio_path, forced_language)
+                    backend = "whisper-fallback"
+                else:
+                    raise
         elif backend == "whisper" and not whisper_available():
             raise RuntimeError(
                 "Whisper is not installed. Run pip install -r requirements.txt, "
@@ -767,14 +809,7 @@ def process_transcription_job(
                 progress=35,
                 message="Loading Whisper and reading the audio",
             )
-            options = {
-                "word_timestamps": True,
-                "fp16": os.getenv("WHISPER_FP16", "0") == "1",
-            }
-            if forced_language and forced_language != "auto":
-                options["language"] = forced_language
-
-            result = get_asr_model().transcribe(audio_path, **options)
+            result = transcribe_with_local_whisper(audio_path, forced_language)
 
         set_job(
             job_id,
@@ -899,7 +934,7 @@ def process_transcription_job(
         set_job(
             job_id,
             status="failed",
-            progress=0,
+            progress=100,
             message="Processing failed",
             error=str(exc),
             traceback=traceback.format_exc(),

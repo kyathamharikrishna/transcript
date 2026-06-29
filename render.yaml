@@ -16,6 +16,8 @@ services:
         value: uploads/transcriber/transcribeflow.sqlite
       - key: TRANSCRIPTION_BACKEND
         value: openai
+      - key: OPENAI_FALLBACK_TO_WHISPER
+        value: "0"
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_TRANSCRIBE_MODEL
