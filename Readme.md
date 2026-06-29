@@ -9,7 +9,7 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
 - **Render Live App:** https://transcribeflow-ai.onrender.com/
 
-> Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite, and sends audio to the OpenAI transcription API instead of loading Whisper/Torch on the free instance.
+> Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite, and sends audio to Groq or OpenAI transcription APIs instead of loading Whisper/Torch on the free instance.
 
 ## Deploy Live on Render
 
@@ -20,7 +20,7 @@ This repository includes:
 - `render.yaml` — Render Blueprint for one-click deployment
 - `/health` — health-check endpoint for Render
 - `DB_BACKEND=sqlite` — lightweight live database mode without MySQL
-- `TRANSCRIPTION_BACKEND=openai` — Render-safe real transcription flow without Torch/Whisper memory crashes
+- `TRANSCRIPTION_BACKEND=auto` — Render-safe transcription that prefers Groq when `GROQ_API_KEY` exists, otherwise uses OpenAI
 
 ### Render Steps
 
@@ -28,7 +28,7 @@ This repository includes:
 2. Click `New` → `Blueprint`.
 3. Connect this repository: `kyathamharikrishna/transcript`.
 4. Render will detect `render.yaml`.
-5. Add a real secret environment variable `OPENAI_API_KEY` from your OpenAI account. Do not use placeholder values like `your_openai_key`.
+5. Add a real secret environment variable `GROQ_API_KEY` or `OPENAI_API_KEY`. If your OpenAI key shows `insufficient_quota`, use Groq or add OpenAI billing/credits.
 6. Click `Apply`.
 7. Wait for the Docker build to finish.
 8. Open the generated Render URL.
@@ -41,9 +41,9 @@ https://transcribeflow-ai.onrender.com/
 
 Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
 
-The Render free service uses `TRANSCRIPTION_BACKEND=openai` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
+The Render free service uses `TRANSCRIPTION_BACKEND=auto` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
 
-If uploads fail with `insufficient_quota`, the code is working but the configured OpenAI account has no available transcription credits. Fix it by adding OpenAI billing/credits, replacing `OPENAI_API_KEY` with a key that has quota, or deploying with the full `requirements.txt` and `TRANSCRIPTION_BACKEND=whisper` on a paid server with enough memory.
+If uploads fail with `insufficient_quota`, the code is working but the configured OpenAI account has no available transcription credits. Fix it by adding OpenAI billing/credits, adding `GROQ_API_KEY`, or deploying with the full `requirements.txt` and `TRANSCRIPTION_BACKEND=whisper` on a paid server with enough memory.
 
 ## Interview-Ready Features
 
@@ -76,9 +76,9 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 ## Tech Stack
 
 - **Frontend:** HTML, CSS, JavaScript, Font Awesome, responsive glassmorphism UI
-- **Backend:** Python, Flask, background threads, OpenAI Whisper
+- **Backend:** Python, Flask, background threads, OpenAI/Groq API transcription, local Whisper
 - **Database:** MySQL locally, SQLite live mode on Render
-- **AI/NLP:** Whisper ASR, transcript translation, extractive summarizer, optional Transformers summary, optional Anthropic Claude Q&A
+- **AI/NLP:** Whisper ASR, Groq/OpenAI transcription, transcript translation, extractive summarizer, optional Transformers summary, optional Anthropic Claude Q&A
 - **Exports:** TXT report, JSON payload, SRT captions
 
 ## Project Structure
@@ -199,6 +199,8 @@ transcript/
 - `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
 - `OPENAI_FALLBACK_TO_WHISPER` — set `1` only on deployments that install Whisper/Torch and have enough memory for local fallback
 - `OPENAI_TRANSCRIBE_MODEL` — defaults to `whisper-1` for timestamped API transcription
+- `GROQ_API_KEY` — enables Groq Whisper API transcription, useful when OpenAI quota is unavailable
+- `GROQ_TRANSCRIBE_MODEL` — defaults to `whisper-large-v3-turbo`
 - `OPENAI_TRANSLATION_MODEL` — defaults to `gpt-4o-mini` for transcript translation
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A

@@ -314,11 +314,18 @@ def transcription_backend():
     if backend in {"openai_api", "api"}:
         return "openai"
 
+    if backend in {"groq_api", "groq-whisper"}:
+        return "groq"
+
     if backend in {"auto", "demo"}:
-        return "openai" if render_runtime() or os.getenv("OPENAI_API_KEY") else "whisper"
+        if os.getenv("GROQ_API_KEY"):
+            return "groq"
+        if os.getenv("OPENAI_API_KEY") or render_runtime():
+            return "openai"
+        return "whisper"
 
     if backend == "whisper" and render_runtime() and os.getenv("ALLOW_RENDER_WHISPER", "0") != "1":
-        return "openai"
+        return "groq" if os.getenv("GROQ_API_KEY") else "openai"
 
     return backend
 
@@ -385,6 +392,13 @@ def openai_key_help_message():
     )
 
 
+def groq_key_help_message():
+    return (
+        "GROQ_API_KEY is missing or invalid. Add a valid Groq API key in Render "
+        "Environment, or switch TRANSCRIPTION_BACKEND to openai/whisper."
+    )
+
+
 def openai_quota_help_message():
     return (
         "OpenAI transcription quota is exhausted for this API key. "
@@ -408,6 +422,13 @@ def is_placeholder_openai_key(api_key):
         "test-key",
     )
     return any(marker in normalized for marker in placeholder_markers)
+
+
+def api_error_details(response):
+    try:
+        return response.json()
+    except ValueError:
+        return response.text[:500]
 
 
 def transcribe_with_openai_api(audio_path, forced_language):
@@ -438,11 +459,7 @@ def transcribe_with_openai_api(audio_path, forced_language):
         )
 
     if response.status_code >= 400:
-        try:
-            details = response.json()
-        except ValueError:
-            details = response.text[:500]
-
+        details = api_error_details(response)
         api_error = details.get("error", {}) if isinstance(details, dict) else {}
         if response.status_code == 401 or api_error.get("code") == "invalid_api_key":
             raise RuntimeError(openai_key_help_message())
@@ -455,6 +472,42 @@ def transcribe_with_openai_api(audio_path, forced_language):
             raise OpenAIQuotaError(openai_quota_help_message())
 
         raise RuntimeError(f"Transcription API failed: {details}")
+
+    return normalize_api_segments(response.json())
+
+
+def transcribe_with_groq_api(audio_path, forced_language):
+    api_key = (os.getenv("GROQ_API_KEY") or "").strip()
+    if is_placeholder_openai_key(api_key):
+        raise RuntimeError(groq_key_help_message())
+
+    import requests
+
+    model = os.getenv("GROQ_TRANSCRIBE_MODEL", "whisper-large-v3-turbo")
+    content_type = mimetypes.guess_type(audio_path)[0] or "application/octet-stream"
+    data = [
+        ("model", model),
+        ("response_format", "verbose_json"),
+        ("timestamp_granularities[]", "segment"),
+        ("timestamp_granularities[]", "word"),
+    ]
+    if forced_language and forced_language != "auto":
+        data.append(("language", forced_language))
+
+    with open(audio_path, "rb") as audio_file:
+        response = requests.post(
+            os.getenv("GROQ_TRANSCRIBE_URL", "https://api.groq.com/openai/v1/audio/transcriptions"),
+            headers={"Authorization": f"Bearer {api_key}"},
+            data=data,
+            files={"file": (os.path.basename(audio_path), audio_file, content_type)},
+            timeout=600,
+        )
+
+    if response.status_code >= 400:
+        details = api_error_details(response)
+        if response.status_code in {401, 403}:
+            raise RuntimeError(groq_key_help_message())
+        raise RuntimeError(f"Groq transcription failed: {details}")
 
     return normalize_api_segments(response.json())
 
@@ -764,9 +817,9 @@ def process_transcription_job(
 
     try:
         backend = transcription_backend()
-        if backend not in {"openai", "whisper"}:
+        if backend not in {"openai", "groq", "whisper"}:
             raise RuntimeError(
-                f"Unsupported TRANSCRIPTION_BACKEND={backend}. Use whisper, openai, or auto."
+                f"Unsupported TRANSCRIPTION_BACKEND={backend}. Use whisper, openai, groq, or auto."
             )
 
         if backend == "openai":
@@ -779,7 +832,16 @@ def process_transcription_job(
             try:
                 result = transcribe_with_openai_api(audio_path, forced_language)
             except OpenAIQuotaError:
-                if whisper_available() and os.getenv("OPENAI_FALLBACK_TO_WHISPER", "1") == "1":
+                if os.getenv("GROQ_API_KEY"):
+                    set_job(
+                        job_id,
+                        status="processing",
+                        progress=42,
+                        message="OpenAI quota exhausted, trying Groq Whisper",
+                    )
+                    result = transcribe_with_groq_api(audio_path, forced_language)
+                    backend = "groq-fallback"
+                elif whisper_available() and os.getenv("OPENAI_FALLBACK_TO_WHISPER", "1") == "1":
                     set_job(
                         job_id,
                         status="processing",
@@ -790,10 +852,18 @@ def process_transcription_job(
                     backend = "whisper-fallback"
                 else:
                     raise
+        elif backend == "groq":
+            set_job(
+                job_id,
+                status="processing",
+                progress=35,
+                message="Sending audio to Groq Whisper API",
+            )
+            result = transcribe_with_groq_api(audio_path, forced_language)
         elif backend == "whisper" and not whisper_available():
             raise RuntimeError(
                 "Whisper is not installed. Run pip install -r requirements.txt, "
-                "or set TRANSCRIPTION_BACKEND=openai on Render."
+                "or set TRANSCRIPTION_BACKEND=openai/groq on Render."
             )
         else:
             set_job(
