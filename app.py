@@ -158,6 +158,14 @@ def rows_to_dicts(rows):
     return [row_to_dict(row) for row in rows]
 
 
+def normalize_email(email):
+    return (email or "").strip().lower()
+
+
+def normalize_password(password):
+    return (password or "").strip()
+
+
 def is_database_locked_error(exc):
     return using_sqlite() and isinstance(exc, sqlite3.OperationalError) and "locked" in str(exc).lower()
 
@@ -663,7 +671,7 @@ def get_transcription_by_job(job_id, user_email):
                     """
                 SELECT *
                 FROM transcriptions
-                WHERE job_id = %s AND user_email = %s
+                WHERE job_id = %s AND LOWER(user_email) = LOWER(%s)
                 LIMIT 1
                 """
                 ),
@@ -703,7 +711,7 @@ def get_history(user_email, limit=50):
                     action_items_count,
                     created_at
                 FROM transcriptions
-                WHERE user_email = %s
+                WHERE LOWER(user_email) = LOWER(%s)
                 ORDER BY created_at DESC
                 LIMIT %s
                 """
@@ -738,7 +746,7 @@ def get_dashboard_stats(user_email):
                     COALESCE(SUM(action_items_count), 0) AS total_actions,
                     COALESCE(SUM(duration_seconds), 0) AS total_seconds
                 FROM transcriptions
-                WHERE user_email = %s
+                WHERE LOWER(user_email) = LOWER(%s)
                 """
                 ),
                 (user_email,),
@@ -1140,7 +1148,7 @@ def fetch_users_by_email(email):
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True)
         try:
-            cursor.execute(adapt_sql("SELECT * FROM users WHERE email = %s ORDER BY id DESC"), (email,))
+            cursor.execute(adapt_sql("SELECT * FROM users WHERE LOWER(email) = LOWER(%s) ORDER BY id DESC"), (email,))
             return rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
@@ -1163,7 +1171,7 @@ def update_user_password_hash(email, password):
         cursor = get_cursor(conn)
         try:
             cursor.execute(
-                adapt_sql("UPDATE users SET password = %s WHERE email = %s"),
+                adapt_sql("UPDATE users SET password = %s WHERE LOWER(email) = LOWER(%s)"),
                 (generate_password_hash(password), email),
             )
             conn.commit()
@@ -1172,6 +1180,33 @@ def update_user_password_hash(email, password):
             conn.close()
 
     return db_retry(operation)
+
+
+def refresh_existing_user_account(email, name, password):
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn)
+        try:
+            cursor.execute(
+                adapt_sql(
+                    """
+                    UPDATE users
+                    SET name = %s, password = %s
+                    WHERE id = (
+                        SELECT id FROM users WHERE LOWER(email) = LOWER(%s) ORDER BY id DESC LIMIT 1
+                    )
+                    """
+                ),
+                (name, generate_password_hash(password), email),
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    db_retry(operation)
+    return fetch_user_by_email(email)
 
 
 @app.errorhandler(413)
@@ -1213,8 +1248,8 @@ def register_page():
 @app.route("/register", methods=["POST"])
 def register():
     name = request.form["name"].strip()
-    email = request.form["email"].strip().lower()
-    raw_password = request.form["password"]
+    email = normalize_email(request.form["email"])
+    raw_password = normalize_password(request.form["password"])
     password = generate_password_hash(raw_password)
 
     try:
@@ -1227,11 +1262,9 @@ def register():
             login_user_session(matching_user, email, raw_password)
             return redirect(url_for("dashboard"))
         if existing_users:
-            return render_template(
-                "login.html",
-                error="This email is already registered. Please login with the existing password.",
-                email=email,
-            )
+            refreshed_user = refresh_existing_user_account(email, name, raw_password)
+            login_user_session(refreshed_user or {"name": name, "password": password}, email)
+            return redirect(url_for("dashboard"))
 
         def operation():
             ensure_database_schema()
@@ -1253,11 +1286,9 @@ def register():
         if existing_user and password_matches(existing_user.get("password"), raw_password):
             login_user_session(existing_user, email, raw_password)
             return redirect(url_for("dashboard"))
-        return render_template(
-            "login.html",
-            error="An account already exists for this email. Please login with your existing password.",
-            email=email,
-        )
+        refreshed_user = refresh_existing_user_account(email, name, raw_password)
+        login_user_session(refreshed_user or {"name": name, "password": password}, email)
+        return redirect(url_for("dashboard"))
     except db_errors() as exc:
         return render_template(
             "register.html",
@@ -1272,8 +1303,8 @@ def register():
 
 @app.route("/login", methods=["POST"])
 def login():
-    email = request.form["email"].strip().lower()
-    password = request.form["password"]
+    email = normalize_email(request.form["email"])
+    password = normalize_password(request.form["password"])
 
     try:
         user = find_matching_user(email, password)
@@ -1470,7 +1501,7 @@ def download_file(filetype, filename):
                     f"""
                 SELECT id
                 FROM transcriptions
-                WHERE user_email = %s AND {column} = %s
+                WHERE LOWER(user_email) = LOWER(%s) AND {column} = %s
                 LIMIT 1
                 """
                 ),
