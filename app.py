@@ -99,6 +99,7 @@ ALLOWED_UPLOAD_EXTENSIONS = {
 JOBS = {}
 JOBS_LOCK = threading.Lock()
 MODEL_LOCK = threading.Lock()
+SCHEMA_LOCK = threading.Lock()
 ASR_MODEL = None
 SCHEMA_READY = False
 
@@ -143,12 +144,35 @@ def rows_to_dicts(rows):
     return [row_to_dict(row) for row in rows]
 
 
+def is_database_locked_error(exc):
+    return using_sqlite() and isinstance(exc, sqlite3.OperationalError) and "locked" in str(exc).lower()
+
+
+def db_retry(operation, attempts=6, base_delay=0.18):
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except sqlite3.OperationalError as exc:
+            if not is_database_locked_error(exc) or attempt == attempts - 1:
+                raise
+            time.sleep(base_delay * (attempt + 1))
+
+
 def get_db_connection():
     if using_sqlite():
         db_path = os.getenv("SQLITE_DB_PATH", os.path.join(BASE_FOLDER, "transcribeflow.sqlite"))
         os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
-        conn = sqlite3.connect(db_path, check_same_thread=False)
+        conn = sqlite3.connect(
+            db_path,
+            timeout=float(os.getenv("SQLITE_TIMEOUT", "30")),
+            check_same_thread=False,
+        )
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA busy_timeout = 30000")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA temp_store = MEMORY")
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
     return mysql.connector.connect(
@@ -164,6 +188,15 @@ def ensure_database_schema():
 
     if SCHEMA_READY:
         return
+
+    with SCHEMA_LOCK:
+        if SCHEMA_READY:
+            return
+        return db_retry(_ensure_database_schema_once)
+
+
+def _ensure_database_schema_once():
+    global SCHEMA_READY
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -550,111 +583,124 @@ def create_job(user_email, original_filename):
 
 
 def insert_transcription_record(record):
-    ensure_database_schema()
-    conn = get_db_connection()
-    cursor = get_cursor(conn)
-    cursor.execute(
-        adapt_sql(
-            """
-        INSERT INTO transcriptions
-        (
-            user_email,
-            job_id,
-            original_filename,
-            audio_file,
-            transcript_file,
-            summary_file,
-            json_file,
-            combined_file,
-            srt_file,
-            detected_language,
-            duration_seconds,
-            word_count,
-            processing_seconds,
-            action_items_count
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        ),
-        (
-            record["user_email"],
-            record["job_id"],
-            record["original_filename"],
-            record["audio_file"],
-            record["transcript_file"],
-            record["summary_file"],
-            record["json_file"],
-            record["combined_file"],
-            record["srt_file"],
-            record["detected_language"],
-            record["duration_seconds"],
-            record["word_count"],
-            record["processing_seconds"],
-            record["action_items_count"],
-        ),
-    )
-    conn.commit()
-    record_id = cursor.lastrowid
-    cursor.close()
-    conn.close()
-    return record_id
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn)
+        try:
+            cursor.execute(
+                adapt_sql(
+                    """
+                INSERT INTO transcriptions
+                (
+                    user_email,
+                    job_id,
+                    original_filename,
+                    audio_file,
+                    transcript_file,
+                    summary_file,
+                    json_file,
+                    combined_file,
+                    srt_file,
+                    detected_language,
+                    duration_seconds,
+                    word_count,
+                    processing_seconds,
+                    action_items_count
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                ),
+                (
+                    record["user_email"],
+                    record["job_id"],
+                    record["original_filename"],
+                    record["audio_file"],
+                    record["transcript_file"],
+                    record["summary_file"],
+                    record["json_file"],
+                    record["combined_file"],
+                    record["srt_file"],
+                    record["detected_language"],
+                    record["duration_seconds"],
+                    record["word_count"],
+                    record["processing_seconds"],
+                    record["action_items_count"],
+                ),
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            cursor.close()
+            conn.close()
+
+    return db_retry(operation)
 
 
 def get_transcription_by_job(job_id, user_email):
-    ensure_database_schema()
-    conn = get_db_connection()
-    cursor = get_cursor(conn, dictionary=True)
-    cursor.execute(
-        adapt_sql(
-            """
-        SELECT *
-        FROM transcriptions
-        WHERE job_id = %s AND user_email = %s
-        LIMIT 1
-        """
-        ),
-        (job_id, user_email),
-    )
-    record = row_to_dict(cursor.fetchone())
-    cursor.close()
-    conn.close()
-    return record
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+        try:
+            cursor.execute(
+                adapt_sql(
+                    """
+                SELECT *
+                FROM transcriptions
+                WHERE job_id = %s AND user_email = %s
+                LIMIT 1
+                """
+                ),
+                (job_id, user_email),
+            )
+            return row_to_dict(cursor.fetchone())
+        finally:
+            cursor.close()
+            conn.close()
+
+    return db_retry(operation)
 
 
 def get_history(user_email, limit=50):
-    ensure_database_schema()
-    conn = get_db_connection()
-    cursor = get_cursor(conn, dictionary=True)
-    cursor.execute(
-        adapt_sql(
-            """
-        SELECT
-            id,
-            job_id,
-            original_filename,
-            audio_file,
-            transcript_file,
-            summary_file,
-            json_file,
-            combined_file,
-            srt_file,
-            detected_language,
-            duration_seconds,
-            word_count,
-            processing_seconds,
-            action_items_count,
-            created_at
-        FROM transcriptions
-        WHERE user_email = %s
-        ORDER BY created_at DESC
-        LIMIT %s
-        """
-        ),
-        (user_email, limit),
-    )
-    records = rows_to_dicts(cursor.fetchall())
-    cursor.close()
-    conn.close()
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+        try:
+            cursor.execute(
+                adapt_sql(
+                    """
+                SELECT
+                    id,
+                    job_id,
+                    original_filename,
+                    audio_file,
+                    transcript_file,
+                    summary_file,
+                    json_file,
+                    combined_file,
+                    srt_file,
+                    detected_language,
+                    duration_seconds,
+                    word_count,
+                    processing_seconds,
+                    action_items_count,
+                    created_at
+                FROM transcriptions
+                WHERE user_email = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """
+                ),
+                (user_email, limit),
+            )
+            return rows_to_dicts(cursor.fetchall())
+        finally:
+            cursor.close()
+            conn.close()
+
+    records = db_retry(operation)
 
     for record in records:
         record["duration_label"] = format_duration(record.get("duration_seconds") or 0)
@@ -663,26 +709,31 @@ def get_history(user_email, limit=50):
 
 
 def get_dashboard_stats(user_email):
-    ensure_database_schema()
-    conn = get_db_connection()
-    cursor = get_cursor(conn, dictionary=True)
-    cursor.execute(
-        adapt_sql(
-            """
-        SELECT
-            COUNT(*) AS total_transcriptions,
-            COALESCE(SUM(word_count), 0) AS total_words,
-            COALESCE(SUM(action_items_count), 0) AS total_actions,
-            COALESCE(SUM(duration_seconds), 0) AS total_seconds
-        FROM transcriptions
-        WHERE user_email = %s
-        """
-        ),
-        (user_email,),
-    )
-    stats = row_to_dict(cursor.fetchone()) or {}
-    cursor.close()
-    conn.close()
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+        try:
+            cursor.execute(
+                adapt_sql(
+                    """
+                SELECT
+                    COUNT(*) AS total_transcriptions,
+                    COALESCE(SUM(word_count), 0) AS total_words,
+                    COALESCE(SUM(action_items_count), 0) AS total_actions,
+                    COALESCE(SUM(duration_seconds), 0) AS total_seconds
+                FROM transcriptions
+                WHERE user_email = %s
+                """
+                ),
+                (user_email,),
+            )
+            return row_to_dict(cursor.fetchone()) or {}
+        finally:
+            cursor.close()
+            conn.close()
+
+    stats = db_retry(operation)
     stats["total_duration_label"] = format_duration(stats.get("total_seconds") or 0)
     return stats
 
@@ -1039,6 +1090,55 @@ def wants_json_response():
     )
 
 
+def password_matches(stored_password, password):
+    stored_password = stored_password or ""
+    try:
+        if check_password_hash(stored_password, password):
+            return True
+    except ValueError:
+        pass
+    return stored_password == password
+
+
+def login_user_session(user, email, password=None):
+    session["user_email"] = email
+    session["user_name"] = user.get("name") or email.split("@")[0]
+    if password and (user.get("password") or "") == password:
+        update_user_password_hash(email, password)
+
+
+def fetch_user_by_email(email):
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+        try:
+            cursor.execute(adapt_sql("SELECT * FROM users WHERE email = %s"), (email,))
+            return row_to_dict(cursor.fetchone())
+        finally:
+            cursor.close()
+            conn.close()
+
+    return db_retry(operation)
+
+
+def update_user_password_hash(email, password):
+    def operation():
+        conn = get_db_connection()
+        cursor = get_cursor(conn)
+        try:
+            cursor.execute(
+                adapt_sql("UPDATE users SET password = %s WHERE email = %s"),
+                (generate_password_hash(password), email),
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    return db_retry(operation)
+
+
 @app.errorhandler(413)
 def file_too_large(error):
     message = f"File is too large. Maximum upload size is {app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)}MB."
@@ -1079,23 +1179,42 @@ def register_page():
 def register():
     name = request.form["name"].strip()
     email = request.form["email"].strip().lower()
-    password = generate_password_hash(request.form["password"])
+    raw_password = request.form["password"]
+    password = generate_password_hash(raw_password)
 
     try:
-        ensure_database_schema()
-        conn = get_db_connection()
-        cursor = get_cursor(conn)
-        cursor.execute(
-            adapt_sql("INSERT INTO users (name, email, password) VALUES (%s, %s, %s)"),
-            (name, email, password),
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
+        def operation():
+            ensure_database_schema()
+            conn = get_db_connection()
+            cursor = get_cursor(conn)
+            try:
+                cursor.execute(
+                    adapt_sql("INSERT INTO users (name, email, password) VALUES (%s, %s, %s)"),
+                    (name, email, password),
+                )
+                conn.commit()
+            finally:
+                cursor.close()
+                conn.close()
+
+        db_retry(operation)
     except db_integrity_errors():
-        return render_template("register.html", error="An account already exists for this email.")
+        existing_user = fetch_user_by_email(email)
+        if existing_user and password_matches(existing_user.get("password"), raw_password):
+            login_user_session(existing_user, email, raw_password)
+            return redirect(url_for("dashboard"))
+        return render_template(
+            "login.html",
+            error="An account already exists for this email. Please login with your existing password.",
+            email=email,
+        )
     except db_errors() as exc:
-        return render_template("register.html", error=f"Database error: {exc}")
+        return render_template(
+            "register.html",
+            error="Database is busy. Please try again in a few seconds." if is_database_locked_error(exc) else f"Database error: {exc}",
+            name=name,
+            email=email,
+        )
 
     return redirect(url_for("login_page"))
 
@@ -1106,34 +1225,20 @@ def login():
     password = request.form["password"]
 
     try:
-        ensure_database_schema()
-        conn = get_db_connection()
-        cursor = get_cursor(conn, dictionary=True)
-        cursor.execute(adapt_sql("SELECT * FROM users WHERE email = %s"), (email,))
-        user = row_to_dict(cursor.fetchone())
-        if user:
-            stored_password = user.get("password") or ""
-            password_ok = check_password_hash(stored_password, password)
-            if not password_ok and stored_password == password:
-                password_ok = True
-                cursor.execute(
-                    adapt_sql("UPDATE users SET password = %s WHERE email = %s"),
-                    (generate_password_hash(password), email),
-                )
-                conn.commit()
-        else:
-            password_ok = False
-        cursor.close()
-        conn.close()
+        user = fetch_user_by_email(email)
+        password_ok = bool(user and password_matches(user.get("password"), password))
     except db_errors() as exc:
-        return render_template("login.html", error=f"Database error: {exc}")
+        return render_template(
+            "login.html",
+            error="Database is busy. Please try again in a few seconds." if is_database_locked_error(exc) else f"Database error: {exc}",
+            email=email,
+        )
 
     if user and password_ok:
-        session["user_email"] = email
-        session["user_name"] = user.get("name") or email.split("@")[0]
+        login_user_session(user, email, password)
         return redirect(url_for("dashboard"))
 
-    return render_template("login.html", error="Invalid email or password.")
+    return render_template("login.html", error="Invalid email or password.", email=email)
 
 
 @app.route("/dashboard")
@@ -1304,23 +1409,29 @@ def download_file(filetype, filename):
         abort(404)
 
     folder, column = DOWNLOADS[filetype]
-    ensure_database_schema()
-    conn = get_db_connection()
-    cursor = get_cursor(conn, dictionary=True)
-    cursor.execute(
-        adapt_sql(
-            f"""
-        SELECT id
-        FROM transcriptions
-        WHERE user_email = %s AND {column} = %s
-        LIMIT 1
-        """
-        ),
-        (session["user_email"], filename),
-    )
-    record = row_to_dict(cursor.fetchone())
-    cursor.close()
-    conn.close()
+
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+        try:
+            cursor.execute(
+                adapt_sql(
+                    f"""
+                SELECT id
+                FROM transcriptions
+                WHERE user_email = %s AND {column} = %s
+                LIMIT 1
+                """
+                ),
+                (session["user_email"], filename),
+            )
+            return row_to_dict(cursor.fetchone())
+        finally:
+            cursor.close()
+            conn.close()
+
+    record = db_retry(operation)
 
     if not record:
         abort(404)

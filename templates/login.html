@@ -38,7 +38,7 @@
 
     <form method="POST" action="{{ url_for('login') }}" class="stack-form">
       <label>Email</label>
-      <input type="email" name="email" placeholder="you@example.com" required>
+      <input type="email" name="email" placeholder="you@example.com" value="{{ email or '' }}" required>
       <label>Password</label>
       <input type="password" name="password" placeholder="Your password" required>
       <button type="submit" class="btn btn-primary">Login</button>

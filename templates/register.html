@@ -38,9 +38,9 @@
 
     <form method="POST" action="{{ url_for('register') }}" class="stack-form">
       <label>Full name</label>
-      <input type="text" name="name" placeholder="Harikrishna" required>
+      <input type="text" name="name" placeholder="Harikrishna" value="{{ name or '' }}" required>
       <label>Email</label>
-      <input type="email" name="email" placeholder="you@example.com" required>
+      <input type="email" name="email" placeholder="you@example.com" value="{{ email or '' }}" required>
       <label>Password</label>
       <input type="password" name="password" placeholder="Create a password" required>
       <button type="submit" class="btn btn-primary">Create workspace</button>
