@@ -1130,18 +1130,31 @@ def login_user_session(user, email, password=None):
 
 
 def fetch_user_by_email(email):
+    users = fetch_users_by_email(email)
+    return users[0] if users else None
+
+
+def fetch_users_by_email(email):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True)
         try:
-            cursor.execute(adapt_sql("SELECT * FROM users WHERE email = %s"), (email,))
-            return row_to_dict(cursor.fetchone())
+            cursor.execute(adapt_sql("SELECT * FROM users WHERE email = %s ORDER BY id DESC"), (email,))
+            return rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
             conn.close()
 
     return db_retry(operation)
+
+
+def find_matching_user(email, password):
+    users = fetch_users_by_email(email)
+    for user in users:
+        if password_matches(user.get("password"), password):
+            return user
+    return None
 
 
 def update_user_password_hash(email, password):
@@ -1205,6 +1218,21 @@ def register():
     password = generate_password_hash(raw_password)
 
     try:
+        existing_users = fetch_users_by_email(email)
+        matching_user = next(
+            (user for user in existing_users if password_matches(user.get("password"), raw_password)),
+            None,
+        )
+        if matching_user:
+            login_user_session(matching_user, email, raw_password)
+            return redirect(url_for("dashboard"))
+        if existing_users:
+            return render_template(
+                "login.html",
+                error="This email is already registered. Please login with the existing password.",
+                email=email,
+            )
+
         def operation():
             ensure_database_schema()
             conn = get_db_connection()
@@ -1221,7 +1249,7 @@ def register():
 
         db_retry(operation)
     except db_integrity_errors():
-        existing_user = fetch_user_by_email(email)
+        existing_user = find_matching_user(email, raw_password)
         if existing_user and password_matches(existing_user.get("password"), raw_password):
             login_user_session(existing_user, email, raw_password)
             return redirect(url_for("dashboard"))
@@ -1238,7 +1266,8 @@ def register():
             email=email,
         )
 
-    return redirect(url_for("login_page"))
+    login_user_session({"name": name, "password": password}, email)
+    return redirect(url_for("dashboard"))
 
 
 @app.route("/login", methods=["POST"])
@@ -1247,8 +1276,7 @@ def login():
     password = request.form["password"]
 
     try:
-        user = fetch_user_by_email(email)
-        password_ok = bool(user and password_matches(user.get("password"), password))
+        user = find_matching_user(email, password)
     except db_errors() as exc:
         return render_template(
             "login.html",
@@ -1256,7 +1284,7 @@ def login():
             email=email,
         )
 
-    if user and password_ok:
+    if user:
         login_user_session(user, email, password)
         return redirect(url_for("dashboard"))
 
