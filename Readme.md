@@ -43,7 +43,7 @@ Render free instances can sleep after inactivity. First load after sleep may tak
 
 The Render free service uses `TRANSCRIPTION_BACKEND=auto` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
 
-If uploads fail with `insufficient_quota`, the code is working but the configured OpenAI account has no available transcription credits. Fix it by adding OpenAI billing/credits, adding `GROQ_API_KEY`, or deploying with the full `requirements.txt` and `TRANSCRIPTION_BACKEND=whisper` on a paid server with enough memory.
+If uploads fail with `insufficient_quota`, the code is working but the configured OpenAI account has no available transcription credits. To avoid OpenAI billing, add `GROQ_API_KEY` in Render and set `TRANSCRIPTION_BACKEND=auto` or `groq`. You can confirm the live backend at `/health`; it should show `"transcription_backend":"groq"` and `"groq_configured":true`.
 
 ## Interview-Ready Features
 

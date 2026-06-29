@@ -435,8 +435,9 @@ def groq_key_help_message():
 def openai_quota_help_message():
     return (
         "OpenAI transcription quota is exhausted for this API key. "
-        "Add billing or credits in the OpenAI dashboard, or deploy with "
-        "TRANSCRIPTION_BACKEND=whisper on a server that has enough memory for Whisper."
+        "To avoid OpenAI billing, add GROQ_API_KEY in Render and set "
+        "TRANSCRIPTION_BACKEND=auto or groq. Groq will transcribe with Whisper-compatible "
+        "timestamps. Another option is TRANSCRIPTION_BACKEND=whisper on a server with enough memory."
     )
 
 
@@ -1446,6 +1447,8 @@ def health():
             "status": "ok",
             "database": "sqlite" if using_sqlite() else "mysql",
             "transcription_backend": transcription_backend(),
+            "groq_configured": bool(os.getenv("GROQ_API_KEY")),
+            "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
         }
     )
 
