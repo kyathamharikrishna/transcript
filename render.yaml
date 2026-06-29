@@ -20,6 +20,8 @@ services:
         sync: false
       - key: OPENAI_TRANSCRIBE_MODEL
         value: whisper-1
+      - key: OPENAI_TRANSLATION_MODEL
+        value: gpt-4o-mini
       - key: WHISPER_FP16
         value: "0"
       - key: ENABLE_TRANSFORMERS_SUMMARY

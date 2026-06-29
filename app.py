@@ -27,6 +27,8 @@ from werkzeug.utils import secure_filename
 from qa_engine import answer_question
 from summarizer import summarize_text
 from transcription_features import (
+    build_meeting_insights,
+    build_speaker_profile,
     build_segments,
     create_srt,
     create_timestamped_transcript,
@@ -35,6 +37,7 @@ from transcription_features import (
     language_display,
     word_count,
 )
+from translator import TRANSLATION_LANGUAGE_OPTIONS, translate_text
 
 
 app = Flask(__name__)
@@ -78,6 +81,19 @@ DOWNLOADS = {
     "srt": (SRT_FOLDER, "srt_file"),
     "transcript": (TRANSCRIPT_FOLDER, "transcript_file"),
     "summary": (SUMMARY_FOLDER, "summary_file"),
+}
+
+ALLOWED_UPLOAD_EXTENSIONS = {
+    "flac",
+    "m4a",
+    "mp3",
+    "mp4",
+    "mpeg",
+    "mpga",
+    "oga",
+    "ogg",
+    "wav",
+    "webm",
 }
 
 JOBS = {}
@@ -305,6 +321,12 @@ def transcription_backend():
 
 def whisper_available():
     return importlib.util.find_spec("whisper") is not None
+
+
+def allowed_upload(filename):
+    if not filename or "." not in filename:
+        return False
+    return filename.rsplit(".", 1)[1].lower() in ALLOWED_UPLOAD_EXTENSIONS
 
 
 def normalize_api_segments(payload):
@@ -590,11 +612,14 @@ def load_payload(record):
         if os.path.exists(json_path):
             with open(json_path, "r", encoding="utf-8") as file:
                 payload = json.load(file)
-                payload.setdefault("segments", [])
-                payload.setdefault("action_items", [])
-                payload.setdefault("files", {})
-                payload.setdefault("stats", {})
-                return payload
+            payload.setdefault("segments", [])
+            payload.setdefault("action_items", [])
+            payload.setdefault("files", {})
+            payload.setdefault("stats", {})
+            payload.setdefault("insights", {})
+            payload.setdefault("speaker_profile", {})
+            payload.setdefault("translation", {})
+            return payload
 
     transcript = ""
     summary = ""
@@ -617,6 +642,9 @@ def load_payload(record):
         "summary": summary,
         "segments": [],
         "action_items": [],
+        "insights": {},
+        "speaker_profile": {},
+        "translation": {},
         "files": {
             "transcript": record.get("transcript_file"),
             "summary": record.get("summary_file"),
@@ -651,6 +679,18 @@ def build_combined_report(payload):
         action_lines.append(f"- {item['timestamp']} [{labels}] {item['text']}")
 
     actions = "\n".join(action_lines) if action_lines else "No action items detected."
+    insights = payload.get("insights", {})
+    speaker_profile = payload.get("speaker_profile", {})
+    translation = payload.get("translation", {})
+    keywords = ", ".join(item["word"] for item in insights.get("top_keywords", [])[:8]) or "No keywords detected."
+    countries = ", ".join(speaker_profile.get("country_mentions", [])) or "None mentioned"
+    translated_block = ""
+    if translation.get("translated_text"):
+        translated_block = f"""
+========== TRANSLATION ({translation.get('target_language')}) ==========
+
+{translation['translated_text']}
+"""
     return f"""========== TRANSCRIBEFLOW AI REPORT ==========
 
 Original File: {payload['original_filename']}
@@ -659,10 +699,18 @@ Duration: {stats['duration_label']}
 Word Count: {stats['word_count']}
 Processing Time: {stats['processing_seconds']}s
 Action Items: {len(payload['action_items'])}
+Questions Asked: {insights.get('question_count', 0)}
+Decision Signals: {insights.get('decision_count', 0)}
+Low Confidence Words: {insights.get('low_confidence_words', 0)}
+Top Keywords: {keywords}
+Speaking Pace: {speaker_profile.get('pace_label', 'Unknown')} ({speaker_profile.get('speaking_rate_wpm', 0)} WPM)
+Country Mentions: {countries}
+Age/Country From Voice: Not inferred
 
 ========== SUMMARY ==========
 
 {payload['summary']}
+{translated_block}
 
 ========== ACTION ITEMS ==========
 
@@ -681,6 +729,7 @@ def process_transcription_job(
     original_filename,
     user_email,
     forced_language,
+    target_translation_language,
 ):
     started_at = time.perf_counter()
 
@@ -743,6 +792,8 @@ def process_transcription_job(
         detected_language = language_display(detected_language_code)
         timestamped_transcript = create_timestamped_transcript(segments)
         action_items = extract_action_items(segments)
+        insights = build_meeting_insights(segments, transcript, action_items)
+        speaker_profile = build_speaker_profile(segments, transcript, detected_language)
         transcript_word_count = word_count(transcript)
         duration_seconds = segments[-1]["end"] if segments else 0
         processing_seconds = round(time.perf_counter() - started_at, 2)
@@ -755,6 +806,11 @@ def process_transcription_job(
         )
 
         summary = summarize_text(transcript)
+        translation = translate_text(
+            timestamped_transcript or transcript,
+            detected_language_code,
+            target_translation_language,
+        )
         srt_text = create_srt(segments)
 
         transcript_filename = f"{job_id}.txt"
@@ -786,6 +842,9 @@ def process_transcription_job(
             "transcription_backend": backend,
             "segments": segments,
             "action_items": action_items,
+            "insights": insights,
+            "speaker_profile": speaker_profile,
+            "translation": translation,
             "files": files,
             "stats": {
                 "detected_language": detected_language,
@@ -981,6 +1040,7 @@ def dashboard():
     return render_template(
         "dashboard.html",
         language_options=LANGUAGE_OPTIONS,
+        translation_language_options=TRANSLATION_LANGUAGE_OPTIONS,
         **context,
     )
 
@@ -1014,12 +1074,17 @@ def upload():
             return jsonify({"error": "Choose or record an audio file first."}), 400
 
         original_filename = secure_filename(file.filename) or "recorded_audio.webm"
+        if not allowed_upload(original_filename):
+            supported = ", ".join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
+            return jsonify({"error": f"Unsupported file type. Supported formats: {supported}."}), 400
+
         job_id = create_job(session["user_email"], original_filename)
         audio_filename = f"{job_id}_{original_filename}"
         audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
         file.save(audio_path)
 
         forced_language = request.form.get("language", "auto")
+        target_translation_language = request.form.get("translation_language", "none")
         set_job(
             job_id,
             audio_file=audio_filename,
@@ -1036,6 +1101,7 @@ def upload():
                 original_filename,
                 session["user_email"],
                 forced_language,
+                target_translation_language,
             ),
             daemon=True,
         )
@@ -1088,6 +1154,9 @@ def transcription_result(job_id):
         record=record,
         payload=payload,
         stats=payload.get("stats", {}),
+        insights=payload.get("insights", {}),
+        speaker_profile=payload.get("speaker_profile", {}),
+        translation=payload.get("translation", {}),
         segments=payload.get("segments", []),
         action_items=payload.get("action_items", []),
         files=payload.get("files", {}),

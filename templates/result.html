@@ -35,12 +35,78 @@
   </div>
 </section>
 
+{% if translation.enabled %}
+<section class="panel reveal">
+  <div class="section-heading compact">
+    <div>
+      <span class="eyebrow">Translation</span>
+      <h2>{{ translation.target_language }} transcript</h2>
+    </div>
+    {% if translation.translated_text %}
+    <button class="btn btn-soft" data-copy-target="translatedTranscript"><i class="fa-regular fa-copy"></i> Copy</button>
+    {% endif %}
+  </div>
+  {% if translation.translated_text %}
+  <pre id="translatedTranscript" class="translated-text">{{ translation.translated_text }}</pre>
+  {% else %}
+  <p class="muted">Translation status: {{ translation.status }}{% if translation.error %}. {{ translation.error }}{% endif %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="insight-strip reveal">
   <div>
     <span>Analysis map</span>
     <strong>Transcript → Summary → Actions → Q&A → Export</strong>
   </div>
   <div class="strip-pulse"><span></span><span></span><span></span><span></span><span></span></div>
+</section>
+
+<section class="panel reveal">
+  <div class="section-heading compact">
+    <div>
+      <span class="eyebrow">Voice-safe speaker profile</span>
+      <h2>Speaking analytics</h2>
+    </div>
+  </div>
+  <div class="profile-grid">
+    <div><span>Detected language</span><strong>{{ speaker_profile.detected_language or stats.detected_language or "Unknown" }}</strong></div>
+    <div><span>Speaking pace</span><strong>{{ speaker_profile.pace_label or "Unknown" }}</strong><small>{{ speaker_profile.speaking_rate_wpm or 0 }} WPM</small></div>
+    <div><span>Age from voice</span><strong>{{ speaker_profile.age_estimate or "Not inferred from voice" }}</strong></div>
+    <div><span>Country from voice</span><strong>{{ speaker_profile.country_estimate or "Not inferred from accent or voice" }}</strong></div>
+  </div>
+  <p class="muted profile-note">{{ speaker_profile.privacy_note or "The app reports language and pace, but does not guess age or nationality from voice." }}</p>
+  {% if speaker_profile.country_mentions %}
+  <div class="keyword-cloud">
+    {% for country in speaker_profile.country_mentions %}
+    <span>{{ country }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel reveal">
+  <div class="section-heading compact">
+    <div>
+      <span class="eyebrow">Quality and topic signals</span>
+      <h2>Transcript intelligence</h2>
+    </div>
+    <div class="download-cell">
+      <span>{{ insights.low_confidence_words or 0 }} low-confidence words</span>
+      <span>{{ insights.question_count or 0 }} questions</span>
+      <span>{{ insights.decision_count or 0 }} decisions</span>
+      <span>{{ insights.action_density or 0 }}% action density</span>
+    </div>
+  </div>
+  {% if insights.top_keywords %}
+  <div class="keyword-cloud">
+    {% for keyword in insights.top_keywords %}
+    <span>{{ keyword.word }} <small>{{ keyword.count }}</small></span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No strong recurring keywords were detected yet.</p>
+  {% endif %}
 </section>
 
 <section class="result-grid">

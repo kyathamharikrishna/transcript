@@ -29,10 +29,18 @@
 
       <div class="form-row">
         <label>
-          Language
+          Spoken language
           <select name="language">
             {% for value, label in language_options %}
             <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          Translate transcript to
+          <select name="translation_language">
+            {% for value, label in translation_language_options %}
+            <option value="{{ value }}" {% if value == "en" %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
         </label>
@@ -100,6 +108,7 @@
       <span><i class="fa-regular fa-clock"></i> Timestamped</span>
       <span><i class="fa-solid fa-list-check"></i> Action items</span>
       <span><i class="fa-solid fa-closed-captioning"></i> SRT export</span>
+      <span><i class="fa-solid fa-language"></i> Translation</span>
       <span><i class="fa-solid fa-comments"></i> Transcript Q&A</span>
     </div>
   </div>

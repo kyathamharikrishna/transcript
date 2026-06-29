@@ -1,3 +1,4 @@
+from collections import Counter
 import math
 import re
 
@@ -46,6 +47,84 @@ ACTION_PATTERNS = [
 
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 WORD_RE = re.compile(r"\b[\w'-]+\b", re.UNICODE)
+KEYWORD_RE = re.compile(r"\b[a-zA-Z][a-zA-Z'-]{2,}\b")
+
+STOPWORDS = {
+    "about",
+    "after",
+    "again",
+    "also",
+    "and",
+    "are",
+    "because",
+    "been",
+    "but",
+    "can",
+    "could",
+    "did",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "her",
+    "him",
+    "his",
+    "into",
+    "its",
+    "just",
+    "like",
+    "not",
+    "our",
+    "out",
+    "she",
+    "should",
+    "that",
+    "the",
+    "their",
+    "them",
+    "then",
+    "there",
+    "they",
+    "this",
+    "was",
+    "were",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with",
+    "would",
+    "you",
+    "your",
+}
+
+COUNTRY_NAMES = [
+    "India",
+    "United States",
+    "USA",
+    "America",
+    "United Kingdom",
+    "UK",
+    "Canada",
+    "Australia",
+    "Germany",
+    "France",
+    "Spain",
+    "Italy",
+    "Japan",
+    "China",
+    "Singapore",
+    "UAE",
+    "United Arab Emirates",
+    "Saudi Arabia",
+    "Qatar",
+    "Kuwait",
+    "Nepal",
+    "Bangladesh",
+    "Pakistan",
+    "Sri Lanka",
+]
 
 
 def language_display(code):
@@ -89,6 +168,84 @@ def format_duration(seconds):
 
 def word_count(text):
     return len(WORD_RE.findall(text or ""))
+
+
+def extract_keywords(text, limit=10):
+    words = [
+        word.lower().strip("'-")
+        for word in KEYWORD_RE.findall(text or "")
+        if word.lower() not in STOPWORDS and len(word) > 2
+    ]
+    counts = Counter(words)
+    return [{"word": word, "count": count} for word, count in counts.most_common(limit)]
+
+
+def build_meeting_insights(segments, transcript, action_items):
+    text = transcript or " ".join(segment.get("text", "") for segment in segments or [])
+    question_count = sum((segment.get("text") or "").count("?") for segment in segments or [])
+    low_confidence_words = 0
+    low_confidence_segments = 0
+
+    for segment in segments or []:
+        if segment.get("low_confidence"):
+            low_confidence_segments += 1
+        low_confidence_words += sum(1 for word in segment.get("words", []) if word.get("low_confidence"))
+
+    decision_count = sum(
+        1
+        for item in action_items or []
+        if any(label.lower() == "decision" for label in item.get("labels", []))
+    )
+    action_count = len(action_items or [])
+    total_words = max(word_count(text), 1)
+
+    return {
+        "top_keywords": extract_keywords(text),
+        "question_count": question_count,
+        "decision_count": decision_count,
+        "low_confidence_words": low_confidence_words,
+        "low_confidence_segments": low_confidence_segments,
+        "action_density": round((action_count / total_words) * 100, 2),
+    }
+
+
+def extract_country_mentions(text):
+    found = []
+    for country in COUNTRY_NAMES:
+        if re.search(rf"\b{re.escape(country)}\b", text or "", re.IGNORECASE):
+            label = "United States" if country in {"USA", "America"} else country
+            label = "United Kingdom" if country == "UK" else label
+            if label not in found:
+                found.append(label)
+    return found
+
+
+def build_speaker_profile(segments, transcript, detected_language):
+    duration = (segments[-1].get("end", 0) if segments else 0) or 0
+    words = word_count(transcript)
+    words_per_minute = round(words / max(duration / 60, 1), 1) if words else 0
+
+    if words_per_minute >= 170:
+        pace = "Fast"
+    elif words_per_minute >= 115:
+        pace = "Conversational"
+    elif words_per_minute > 0:
+        pace = "Measured"
+    else:
+        pace = "Unknown"
+
+    return {
+        "detected_language": detected_language,
+        "speaking_rate_wpm": words_per_minute,
+        "pace_label": pace,
+        "country_mentions": extract_country_mentions(transcript),
+        "age_estimate": "Not inferred from voice",
+        "country_estimate": "Not inferred from accent or voice",
+        "privacy_note": (
+            "The app reports language, pace, and transcript-mentioned locations. "
+            "It does not guess age or nationality from a person's voice."
+        ),
+    }
 
 
 def _confidence_from_segment(segment):

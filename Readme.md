@@ -1,6 +1,6 @@
 # TranscribeFlow AI
 
-TranscribeFlow AI is a Flask + Whisper web application for turning audio into timestamped transcripts, summaries, action items, subtitles, downloadable reports, and transcript Q&A.
+TranscribeFlow AI is a Flask + Whisper web application for turning audio into timestamped transcripts, translations, summaries, action items, subtitles, downloadable reports, safe speaker analytics, and transcript Q&A.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
@@ -57,12 +57,14 @@ The Render free service uses `TRANSCRIPTION_BACKEND=openai` and `requirements-re
 - **Transcription history dashboard** — previous transcripts show date, language, duration, word count, action count, and downloads.
 - **SRT subtitle export** — timestamped segments are exported as `.srt` captions for creators and video workflows.
 - **Language detection and forced language** — Whisper auto-detects language and users can force common languages from the dashboard.
+- **Transcript translation** — users can translate Hindi, Telugu, Tamil, Kannada, Malayalam, English, and other supported transcripts into a convenient target language when `OPENAI_API_KEY` is configured.
 
 ### Tier 3
 
 - **Audio and transcript stats** — duration, word count, processing time, language, and action counts.
 - **Copy-to-clipboard buttons** — copy transcript and summary in one click.
 - **Confidence highlights** — low-confidence Whisper words are highlighted so users can review uncertain text.
+- **Voice-safe speaker profile** — shows detected language, speaking pace, transcript-mentioned countries, and a clear note that age or nationality is not guessed from voice.
 
 ### Frontend Experience
 
@@ -74,7 +76,7 @@ The Render free service uses `TRANSCRIPTION_BACKEND=openai` and `requirements-re
 - **Frontend:** HTML, CSS, JavaScript, Font Awesome, responsive glassmorphism UI
 - **Backend:** Python, Flask, background threads, OpenAI Whisper
 - **Database:** MySQL locally, SQLite live mode on Render
-- **AI/NLP:** Whisper ASR, extractive summarizer, optional Transformers summary, optional Anthropic Claude Q&A
+- **AI/NLP:** Whisper ASR, transcript translation, extractive summarizer, optional Transformers summary, optional Anthropic Claude Q&A
 - **Exports:** TXT report, JSON payload, SRT captions
 
 ## Project Structure
@@ -84,6 +86,7 @@ transcript/
 ├── app.py
 ├── qa_engine.py
 ├── summarizer.py
+├── translator.py
 ├── transcription_features.py
 ├── schema.sql
 ├── requirements.txt
@@ -151,10 +154,12 @@ transcript/
    set DB_PASSWORD=your_mysql_password
    set DB_NAME=transcribeflow
    set WHISPER_MODEL=small
+   set OPENAI_API_KEY=your_openai_key
+   set OPENAI_TRANSLATION_MODEL=gpt-4o-mini
    set ANTHROPIC_API_KEY=your_key_here
    ```
 
-   `ANTHROPIC_API_KEY` is optional. Without it, transcript Q&A uses the local retrieval fallback.
+   `OPENAI_API_KEY` is required for Render transcription and optional transcript translation. `ANTHROPIC_API_KEY` is optional. Without it, transcript Q&A uses the local retrieval fallback.
 
 7. Run the application.
 
@@ -178,8 +183,8 @@ transcript/
 
 - **Transcript TXT:** speaker-labelled timestamped transcript
 - **Summary TXT:** concise AI summary
-- **Combined Report TXT:** metadata, summary, action items, and transcript
-- **JSON:** complete structured payload with stats, files, segments, and action items
+- **Combined Report TXT:** metadata, summary, translation, action items, speaker analytics, and transcript
+- **JSON:** complete structured payload with stats, files, segments, translation, speaker profile, insights, and action items
 - **SRT:** subtitle captions generated from Whisper timestamps
 
 ## Environment Options
@@ -191,9 +196,14 @@ transcript/
 - `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
 - `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
 - `OPENAI_TRANSCRIBE_MODEL` — defaults to `whisper-1` for timestamped API transcription
+- `OPENAI_TRANSLATION_MODEL` — defaults to `gpt-4o-mini` for transcript translation
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
 - `ANTHROPIC_MODEL` — overrides the Claude model used by Q&A
+
+## Speaker Analytics Note
+
+The app intentionally does not infer a person's age or country/nationality from voice or accent. Those guesses are unreliable and risky in real products. Instead, TranscribeFlow reports safe, useful signals: detected language, speaking pace, low-confidence words, top keywords, and countries explicitly mentioned in the transcript.
 
 ## License
 
