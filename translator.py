@@ -12,9 +12,24 @@ TRANSLATION_LANGUAGE_OPTIONS = [
     ("ta", "Tamil"),
     ("kn", "Kannada"),
     ("ml", "Malayalam"),
+    ("mr", "Marathi"),
+    ("gu", "Gujarati"),
+    ("bn", "Bengali"),
+    ("ur", "Urdu"),
+    ("pa", "Punjabi"),
+    ("or", "Odia"),
+    ("as", "Assamese"),
+    ("sa", "Sanskrit"),
     ("es", "Spanish"),
     ("fr", "French"),
     ("de", "German"),
+    ("it", "Italian"),
+    ("pt", "Portuguese"),
+    ("ar", "Arabic"),
+    ("zh", "Chinese"),
+    ("ja", "Japanese"),
+    ("ko", "Korean"),
+    ("ru", "Russian"),
 ]
 
 TRANSLATION_LANGUAGE_NAMES = dict(TRANSLATION_LANGUAGE_OPTIONS)
@@ -30,49 +45,54 @@ def should_translate(source_language, target_language):
     return target not in {"", "none", "auto", source}
 
 
-def translate_text(text, source_language, target_language):
-    text = (text or "").strip()
-    target_language = (target_language or "none").lower()
-    if not text or not should_translate(source_language, target_language):
+def translation_provider():
+    groq_key = (os.getenv("GROQ_API_KEY") or "").strip()
+    if groq_key:
         return {
-            "enabled": False,
-            "target_language": language_name(target_language),
-            "translated_text": "",
-            "status": "skipped",
-            "error": "",
+            "name": "groq",
+            "api_key": groq_key,
+            "url": os.getenv("GROQ_CHAT_COMPLETIONS_URL", "https://api.groq.com/openai/v1/chat/completions"),
+            "model": os.getenv("GROQ_TRANSLATION_MODEL", "llama-3.3-70b-versatile"),
         }
 
-    api_key = (os.getenv("OPENAI_API_KEY") or "").strip()
-    if not api_key:
+    openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+    if openai_key:
         return {
-            "enabled": True,
-            "target_language": language_name(target_language),
-            "translated_text": "",
-            "status": "missing_api_key",
-            "error": "Set OPENAI_API_KEY to enable transcript translation.",
+            "name": "openai",
+            "api_key": openai_key,
+            "url": os.getenv("OPENAI_CHAT_COMPLETIONS_URL", "https://api.openai.com/v1/chat/completions"),
+            "model": os.getenv("OPENAI_TRANSLATION_MODEL", "gpt-4o-mini"),
         }
 
-    model = os.getenv("OPENAI_TRANSLATION_MODEL", "gpt-4o-mini")
-    prompt = (
-        "Translate this transcript accurately. Preserve timestamps like [00:01:23], "
-        "speaker labels, names, numbers, and action-item wording. Return only the translation.\n\n"
-        f"Source language: {language_name(source_language)}\n"
-        f"Target language: {language_name(target_language)}\n\n"
-        f"Transcript:\n{text[:12000]}"
-    )
+    return None
+
+
+def empty_translation(target_language, status="skipped", error="", enabled=False):
+    return {
+        "enabled": enabled,
+        "target_language": language_name(target_language),
+        "translated_text": "",
+        "translated_summary": "",
+        "status": status,
+        "provider": "",
+        "error": error,
+    }
+
+
+def call_translation_model(prompt, provider):
     response = requests.post(
-        os.getenv("OPENAI_CHAT_COMPLETIONS_URL", "https://api.openai.com/v1/chat/completions"),
+        provider["url"],
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {provider['api_key']}",
             "Content-Type": "application/json",
         },
         data=json.dumps(
             {
-                "model": model,
+                "model": provider["model"],
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a precise multilingual transcript translator.",
+                        "content": "You are a precise multilingual translator for transcripts and summaries.",
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -81,27 +101,73 @@ def translate_text(text, source_language, target_language):
         ),
         timeout=120,
     )
-
     if response.status_code >= 400:
-        return {
-            "enabled": True,
-            "target_language": language_name(target_language),
-            "translated_text": "",
-            "status": "failed",
-            "error": response.text[:500],
-        }
-
+        raise RuntimeError(response.text[:500])
     payload = response.json()
-    translated = (
+    return (
         payload.get("choices", [{}])[0]
         .get("message", {})
         .get("content", "")
         .strip()
     )
-    return {
-        "enabled": True,
-        "target_language": language_name(target_language),
-        "translated_text": translated,
-        "status": "completed" if translated else "empty",
-        "error": "",
-    }
+
+
+def translate_transcript_bundle(transcript, summary, source_language, target_language):
+    transcript = (transcript or "").strip()
+    summary = (summary or "").strip()
+    target_language = (target_language or "none").lower()
+
+    if not (transcript or summary) or not should_translate(source_language, target_language):
+        return empty_translation(target_language)
+
+    provider = translation_provider()
+    if not provider:
+        return empty_translation(
+            target_language,
+            status="missing_api_key",
+            error="Set GROQ_API_KEY or OPENAI_API_KEY to enable translation.",
+            enabled=True,
+        )
+
+    target_name = language_name(target_language)
+    source_name = language_name(source_language)
+    prompt = (
+        "Translate the transcript and summary accurately. Preserve timestamps like [00:01:23], "
+        "speaker labels, names, numbers, and action-item wording. Return valid JSON only with keys "
+        "`translated_text` and `translated_summary`.\n\n"
+        f"Source language: {source_name}\n"
+        f"Target language: {target_name}\n\n"
+        f"Transcript:\n{transcript[:12000]}\n\n"
+        f"Summary:\n{summary[:3000]}"
+    )
+
+    try:
+        content = call_translation_model(prompt, provider)
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            parsed = {"translated_text": content, "translated_summary": ""}
+
+        return {
+            "enabled": True,
+            "target_language": target_name,
+            "translated_text": (parsed.get("translated_text") or "").strip(),
+            "translated_summary": (parsed.get("translated_summary") or "").strip(),
+            "status": "completed",
+            "provider": provider["name"],
+            "error": "",
+        }
+    except RuntimeError as exc:
+        return {
+            "enabled": True,
+            "target_language": target_name,
+            "translated_text": "",
+            "translated_summary": "",
+            "status": "failed",
+            "provider": provider["name"],
+            "error": str(exc),
+        }
+
+
+def translate_text(text, source_language, target_language):
+    return translate_transcript_bundle(text, "", source_language, target_language)

@@ -26,6 +26,8 @@ services:
         sync: false
       - key: GROQ_TRANSCRIBE_MODEL
         value: whisper-large-v3-turbo
+      - key: GROQ_TRANSLATION_MODEL
+        value: llama-3.3-70b-versatile
       - key: OPENAI_TRANSLATION_MODEL
         value: gpt-4o-mini
       - key: WHISPER_FP16

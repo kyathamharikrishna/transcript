@@ -59,14 +59,14 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 - **Transcription history dashboard** — previous transcripts show date, language, duration, word count, action count, and downloads.
 - **SRT subtitle export** — timestamped segments are exported as `.srt` captions for creators and video workflows.
 - **Language detection and forced language** — Whisper auto-detects language and users can force common languages from the dashboard.
-- **Transcript translation** — users can translate Hindi, Telugu, Tamil, Kannada, Malayalam, English, and other supported transcripts into a convenient target language when `OPENAI_API_KEY` is configured.
+- **Transcript and summary translation** — users can translate Hindi, Telugu, Tamil, Kannada, Malayalam, Marathi, Gujarati, Bengali, Urdu, Punjabi, Odia, Assamese, Sanskrit, English, Spanish, French, German, Italian, Portuguese, Arabic, Chinese, Japanese, Korean, and Russian using `GROQ_API_KEY` or `OPENAI_API_KEY`.
 
 ### Tier 3
 
 - **Audio and transcript stats** — duration, word count, processing time, language, and action counts.
 - **Copy-to-clipboard buttons** — copy transcript and summary in one click.
 - **Confidence highlights** — low-confidence Whisper words are highlighted so users can review uncertain text.
-- **Voice-safe speaker profile** — shows detected language, speaking pace, transcript-mentioned countries, and a clear note that age or nationality is not guessed from voice.
+- **Voice-safe speaker profile** — shows detected language and speaking pace, and clearly avoids unreliable age guessing from voice.
 
 ### Frontend Experience
 
@@ -156,12 +156,14 @@ transcript/
    set DB_PASSWORD=your_mysql_password
    set DB_NAME=transcribeflow
    set WHISPER_MODEL=small
-   set OPENAI_API_KEY=your_openai_key
-   set OPENAI_TRANSLATION_MODEL=gpt-4o-mini
+   set TRANSCRIPTION_BACKEND=auto
+   set GROQ_API_KEY=your_groq_key
+   set GROQ_TRANSCRIBE_MODEL=whisper-large-v3-turbo
+   set GROQ_TRANSLATION_MODEL=llama-3.3-70b-versatile
    set ANTHROPIC_API_KEY=your_key_here
    ```
 
-   `OPENAI_API_KEY` is required for Render transcription and optional transcript translation. `ANTHROPIC_API_KEY` is optional. Without it, transcript Q&A uses the local retrieval fallback.
+   `GROQ_API_KEY` is recommended for Render transcription and translation without OpenAI quota. `ANTHROPIC_API_KEY` is optional. Without it, transcript Q&A uses the local retrieval fallback.
 
 7. Run the application.
 
@@ -201,6 +203,7 @@ transcript/
 - `OPENAI_TRANSCRIBE_MODEL` — defaults to `whisper-1` for timestamped API transcription
 - `GROQ_API_KEY` — enables Groq Whisper API transcription, useful when OpenAI quota is unavailable
 - `GROQ_TRANSCRIBE_MODEL` — defaults to `whisper-large-v3-turbo`
+- `GROQ_TRANSLATION_MODEL` — defaults to `llama-3.3-70b-versatile` for transcript and summary translation
 - `OPENAI_TRANSLATION_MODEL` — defaults to `gpt-4o-mini` for transcript translation
 - `ENABLE_TRANSFORMERS_SUMMARY` — set `1` to enable optional BART summarization
 - `ANTHROPIC_API_KEY` — enables Claude-powered transcript Q&A
@@ -208,7 +211,7 @@ transcript/
 
 ## Speaker Analytics Note
 
-The app intentionally does not infer a person's age or country/nationality from voice or accent. Those guesses are unreliable and risky in real products. Instead, TranscribeFlow reports safe, useful signals: detected language, speaking pace, low-confidence words, top keywords, and countries explicitly mentioned in the transcript.
+The app intentionally does not infer a person's age from voice. That guess is unreliable in real products. Instead, TranscribeFlow reports safe, useful signals: detected language, speaking pace, low-confidence words, and top keywords.
 
 ## License
 

@@ -37,7 +37,7 @@ from transcription_features import (
     language_display,
     word_count,
 )
-from translator import TRANSLATION_LANGUAGE_OPTIONS, translate_text
+from translator import TRANSLATION_LANGUAGE_OPTIONS, translate_transcript_bundle
 
 
 app = Flask(__name__)
@@ -65,14 +65,28 @@ for folder in (
 LANGUAGE_OPTIONS = [
     ("auto", "Auto detect"),
     ("en", "English"),
-    ("te", "Telugu"),
     ("hi", "Hindi"),
+    ("te", "Telugu"),
     ("ta", "Tamil"),
     ("kn", "Kannada"),
     ("ml", "Malayalam"),
+    ("mr", "Marathi"),
+    ("gu", "Gujarati"),
+    ("bn", "Bengali"),
+    ("ur", "Urdu"),
+    ("pa", "Punjabi"),
+    ("or", "Odia"),
+    ("as", "Assamese"),
     ("es", "Spanish"),
     ("fr", "French"),
     ("de", "German"),
+    ("it", "Italian"),
+    ("pt", "Portuguese"),
+    ("ar", "Arabic"),
+    ("zh", "Chinese"),
+    ("ja", "Japanese"),
+    ("ko", "Korean"),
+    ("ru", "Russian"),
 ]
 
 DOWNLOADS = {
@@ -817,13 +831,19 @@ def build_combined_report(payload):
     speaker_profile = payload.get("speaker_profile", {})
     translation = payload.get("translation", {})
     keywords = ", ".join(item["word"] for item in insights.get("top_keywords", [])[:8]) or "No keywords detected."
-    countries = ", ".join(speaker_profile.get("country_mentions", [])) or "None mentioned"
     translated_block = ""
     if translation.get("translated_text"):
         translated_block = f"""
 ========== TRANSLATION ({translation.get('target_language')}) ==========
 
 {translation['translated_text']}
+"""
+    translated_summary_block = ""
+    if translation.get("translated_summary"):
+        translated_summary_block = f"""
+========== TRANSLATED SUMMARY ({translation.get('target_language')}) ==========
+
+{translation['translated_summary']}
 """
     return f"""========== TRANSCRIBEFLOW AI REPORT ==========
 
@@ -838,13 +858,13 @@ Decision Signals: {insights.get('decision_count', 0)}
 Low Confidence Words: {insights.get('low_confidence_words', 0)}
 Top Keywords: {keywords}
 Speaking Pace: {speaker_profile.get('pace_label', 'Unknown')} ({speaker_profile.get('speaking_rate_wpm', 0)} WPM)
-Country Mentions: {countries}
-Age/Country From Voice: Not inferred
+Age From Voice: Not inferred
 
 ========== SUMMARY ==========
 
 {payload['summary']}
 {translated_block}
+{translated_summary_block}
 
 ========== ACTION ITEMS ==========
 
@@ -963,8 +983,9 @@ def process_transcription_job(
         )
 
         summary = summarize_text(transcript)
-        translation = translate_text(
+        translation = translate_transcript_bundle(
             timestamped_transcript or transcript,
+            summary,
             detected_language_code,
             target_translation_language,
         )

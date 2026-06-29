@@ -99,33 +99,6 @@ STOPWORDS = {
     "your",
 }
 
-COUNTRY_NAMES = [
-    "India",
-    "United States",
-    "USA",
-    "America",
-    "United Kingdom",
-    "UK",
-    "Canada",
-    "Australia",
-    "Germany",
-    "France",
-    "Spain",
-    "Italy",
-    "Japan",
-    "China",
-    "Singapore",
-    "UAE",
-    "United Arab Emirates",
-    "Saudi Arabia",
-    "Qatar",
-    "Kuwait",
-    "Nepal",
-    "Bangladesh",
-    "Pakistan",
-    "Sri Lanka",
-]
-
 
 def language_display(code):
     if not code:
@@ -209,17 +182,6 @@ def build_meeting_insights(segments, transcript, action_items):
     }
 
 
-def extract_country_mentions(text):
-    found = []
-    for country in COUNTRY_NAMES:
-        if re.search(rf"\b{re.escape(country)}\b", text or "", re.IGNORECASE):
-            label = "United States" if country in {"USA", "America"} else country
-            label = "United Kingdom" if country == "UK" else label
-            if label not in found:
-                found.append(label)
-    return found
-
-
 def build_speaker_profile(segments, transcript, detected_language):
     duration = (segments[-1].get("end", 0) if segments else 0) or 0
     words = word_count(transcript)
@@ -238,12 +200,11 @@ def build_speaker_profile(segments, transcript, detected_language):
         "detected_language": detected_language,
         "speaking_rate_wpm": words_per_minute,
         "pace_label": pace,
-        "country_mentions": extract_country_mentions(transcript),
         "age_estimate": "Not inferred from voice",
-        "country_estimate": "Not inferred from accent or voice",
+        "age_accuracy": "Not available",
         "privacy_note": (
-            "The app reports language, pace, and transcript-mentioned locations. "
-            "It does not guess age or nationality from a person's voice."
+            "The app reports detected language and speaking pace. "
+            "It does not guess age from a person's voice because that estimate is not reliable enough for production."
         ),
     }
 

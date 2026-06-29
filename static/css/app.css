@@ -993,6 +993,18 @@ td small {
   background: rgba(255, 255, 255, 0.055);
 }
 
+.translated-block {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.translated-block p {
+  margin: 0;
+  color: #d8e7ff;
+  line-height: 1.75;
+}
+
 .empty-state {
   min-height: 220px;
   display: flex;
