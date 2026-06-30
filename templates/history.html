@@ -6,8 +6,8 @@
 <section class="panel page-header vault-header reveal">
   <div>
     <span class="eyebrow">Transcript vault</span>
-    <h1>History dashboard</h1>
-    <p class="muted">Review every processed file, reopen analysis, or download reports and subtitles.</p>
+    <h1>{% if show_all_history %}Project history dashboard{% else %}History dashboard{% endif %}</h1>
+    <p class="muted">Review processed files, reopen analysis, or download reports and subtitles.</p>
   </div>
   <div class="vault-visual" aria-hidden="true">
     <span></span><span></span><span></span>
@@ -27,6 +27,7 @@
       <thead>
         <tr>
           <th>File</th>
+          {% if show_all_history %}<th>User</th>{% endif %}
           <th>Created</th>
           <th>Language</th>
           <th>Duration</th>
@@ -41,6 +42,7 @@
             <strong>{{ item.original_filename or item.audio_file }}</strong>
             <small>{{ item.action_items_count or 0 }} action items • {{ item.processing_seconds or 0 }}s processing</small>
           </td>
+          {% if show_all_history %}<td>{{ item.user_email or "Unknown" }}</td>{% endif %}
           <td>{{ item.created_at }}</td>
           <td>{{ item.language_label }}</td>
           <td>{{ item.duration_label }}</td>

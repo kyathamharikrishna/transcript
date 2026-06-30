@@ -14,6 +14,8 @@ services:
         value: sqlite
       - key: SQLITE_DB_PATH
         value: uploads/transcriber/transcribeflow.sqlite
+      - key: SHOW_ALL_TRANSCRIPTIONS
+        value: "1"
       - key: TRANSCRIPTION_BACKEND
         value: auto
       - key: OPENAI_FALLBACK_TO_WHISPER

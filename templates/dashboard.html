@@ -137,7 +137,7 @@
   <div class="section-heading">
     <div>
       <span class="eyebrow">Recent work</span>
-      <h2>Transcription history</h2>
+      <h2>{% if show_all_history %}Project transcription history{% else %}Your transcription history{% endif %}</h2>
     </div>
     <a class="btn btn-soft" href="{{ url_for('history') }}">View all</a>
   </div>
@@ -160,7 +160,7 @@
         <tr>
           <td>
             <strong>{{ item.original_filename or item.audio_file }}</strong>
-            <small>{{ item.created_at }}</small>
+            <small>{{ item.created_at }}{% if show_all_history and item.user_email %} • {{ item.user_email }}{% endif %}</small>
           </td>
           <td>{{ item.language_label }}</td>
           <td>{{ item.duration_label }}</td>

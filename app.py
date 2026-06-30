@@ -166,6 +166,10 @@ def normalize_password(password):
     return (password or "").strip()
 
 
+def show_all_transcriptions():
+    return os.getenv("SHOW_ALL_TRANSCRIPTIONS", "1").lower() in {"1", "true", "yes", "all"}
+
+
 def is_database_locked_error(exc):
     return using_sqlite() and isinstance(exc, sqlite3.OperationalError) and "locked" in str(exc).lower()
 
@@ -660,23 +664,36 @@ def insert_transcription_record(record):
     return db_retry(operation)
 
 
-def get_transcription_by_job(job_id, user_email):
+def get_transcription_by_job(job_id, user_email=None):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True)
         try:
-            cursor.execute(
-                adapt_sql(
+            if show_all_transcriptions():
+                cursor.execute(
+                    adapt_sql(
+                        """
+                    SELECT *
+                    FROM transcriptions
+                    WHERE job_id = %s
+                    LIMIT 1
                     """
-                SELECT *
-                FROM transcriptions
-                WHERE job_id = %s AND LOWER(user_email) = LOWER(%s)
-                LIMIT 1
-                """
-                ),
-                (job_id, user_email),
-            )
+                    ),
+                    (job_id,),
+                )
+            else:
+                cursor.execute(
+                    adapt_sql(
+                        """
+                    SELECT *
+                    FROM transcriptions
+                    WHERE job_id = %s AND LOWER(user_email) = LOWER(%s)
+                    LIMIT 1
+                    """
+                    ),
+                    (job_id, user_email),
+                )
             return row_to_dict(cursor.fetchone())
         finally:
             cursor.close()
@@ -685,39 +702,39 @@ def get_transcription_by_job(job_id, user_email):
     return db_retry(operation)
 
 
-def get_history(user_email, limit=50):
+def get_history(user_email=None, limit=50):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True)
         try:
-            cursor.execute(
-                adapt_sql(
-                    """
-                SELECT
-                    id,
-                    job_id,
-                    original_filename,
-                    audio_file,
-                    transcript_file,
-                    summary_file,
-                    json_file,
-                    combined_file,
-                    srt_file,
-                    detected_language,
-                    duration_seconds,
-                    word_count,
-                    processing_seconds,
-                    action_items_count,
-                    created_at
-                FROM transcriptions
-                WHERE LOWER(user_email) = LOWER(%s)
-                ORDER BY created_at DESC
-                LIMIT %s
-                """
-                ),
-                (user_email, limit),
-            )
+            query = """
+            SELECT
+                id,
+                user_email,
+                job_id,
+                original_filename,
+                audio_file,
+                transcript_file,
+                summary_file,
+                json_file,
+                combined_file,
+                srt_file,
+                detected_language,
+                duration_seconds,
+                word_count,
+                processing_seconds,
+                action_items_count,
+                created_at
+            FROM transcriptions
+            """
+            params = []
+            if not show_all_transcriptions():
+                query += " WHERE LOWER(user_email) = LOWER(%s)"
+                params.append(user_email)
+            query += " ORDER BY created_at DESC LIMIT %s"
+            params.append(limit)
+            cursor.execute(adapt_sql(query), tuple(params))
             return rows_to_dicts(cursor.fetchall())
         finally:
             cursor.close()
@@ -731,26 +748,25 @@ def get_history(user_email, limit=50):
     return records
 
 
-def get_dashboard_stats(user_email):
+def get_dashboard_stats(user_email=None):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True)
         try:
-            cursor.execute(
-                adapt_sql(
-                    """
-                SELECT
-                    COUNT(*) AS total_transcriptions,
-                    COALESCE(SUM(word_count), 0) AS total_words,
-                    COALESCE(SUM(action_items_count), 0) AS total_actions,
-                    COALESCE(SUM(duration_seconds), 0) AS total_seconds
-                FROM transcriptions
-                WHERE LOWER(user_email) = LOWER(%s)
-                """
-                ),
-                (user_email,),
-            )
+            query = """
+            SELECT
+                COUNT(*) AS total_transcriptions,
+                COALESCE(SUM(word_count), 0) AS total_words,
+                COALESCE(SUM(action_items_count), 0) AS total_actions,
+                COALESCE(SUM(duration_seconds), 0) AS total_seconds
+            FROM transcriptions
+            """
+            params = []
+            if not show_all_transcriptions():
+                query += " WHERE LOWER(user_email) = LOWER(%s)"
+                params.append(user_email)
+            cursor.execute(adapt_sql(query), tuple(params))
             return row_to_dict(cursor.fetchone()) or {}
         finally:
             cursor.close()
@@ -1097,6 +1113,7 @@ def dashboard_context(user_email, limit=5):
         return {
             "recent_records": get_history(user_email, limit=limit),
             "stats": get_dashboard_stats(user_email),
+            "show_all_history": show_all_transcriptions(),
             "db_error": None,
         }
     except db_errors() as exc:
@@ -1109,6 +1126,7 @@ def dashboard_context(user_email, limit=5):
                 "total_duration_label": "0s",
             },
             "db_error": str(exc),
+            "show_all_history": show_all_transcriptions(),
         }
 
 
@@ -1348,7 +1366,12 @@ def history():
         records = []
         db_error = str(exc)
 
-    return render_template("history.html", records=records, db_error=db_error)
+    return render_template(
+        "history.html",
+        records=records,
+        db_error=db_error,
+        show_all_history=show_all_transcriptions(),
+    )
 
 
 @app.route("/upload", methods=["POST"])
@@ -1496,17 +1519,30 @@ def download_file(filetype, filename):
         conn = get_db_connection()
         cursor = get_cursor(conn, dictionary=True)
         try:
-            cursor.execute(
-                adapt_sql(
-                    f"""
-                SELECT id
-                FROM transcriptions
-                WHERE LOWER(user_email) = LOWER(%s) AND {column} = %s
-                LIMIT 1
-                """
-                ),
-                (session["user_email"], filename),
-            )
+            if show_all_transcriptions():
+                cursor.execute(
+                    adapt_sql(
+                        f"""
+                    SELECT id
+                    FROM transcriptions
+                    WHERE {column} = %s
+                    LIMIT 1
+                    """
+                    ),
+                    (filename,),
+                )
+            else:
+                cursor.execute(
+                    adapt_sql(
+                        f"""
+                    SELECT id
+                    FROM transcriptions
+                    WHERE LOWER(user_email) = LOWER(%s) AND {column} = %s
+                    LIMIT 1
+                    """
+                    ),
+                    (session["user_email"], filename),
+                )
             return row_to_dict(cursor.fetchone())
         finally:
             cursor.close()
@@ -1529,6 +1565,7 @@ def health():
             "transcription_backend": transcription_backend(),
             "groq_configured": bool(os.getenv("GROQ_API_KEY")),
             "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+            "show_all_transcriptions": show_all_transcriptions(),
         }
     )
 

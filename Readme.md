@@ -57,6 +57,7 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 
 - **Async processing with progress bar** — uploads return immediately and a background worker updates status while Whisper runs.
 - **Transcription history dashboard** — previous transcripts show date, language, duration, word count, action count, and downloads.
+- **Project-wide history mode** — `SHOW_ALL_TRANSCRIPTIONS=1` lets the dashboard and View all page show every saved transcription in this demo project, including older records saved under different emails.
 - **SRT subtitle export** — timestamped segments are exported as `.srt` captions for creators and video workflows.
 - **Language detection and forced language** — Whisper auto-detects language and users can force common languages from the dashboard.
 - **Transcript and summary translation** — users can translate Hindi, Telugu, Tamil, Kannada, Malayalam, Marathi, Gujarati, Bengali, Urdu, Punjabi, Odia, Assamese, Sanskrit, English, Spanish, French, German, Italian, Portuguese, Arabic, Chinese, Japanese, Korean, and Russian using `GROQ_API_KEY` or `OPENAI_API_KEY`.
@@ -197,6 +198,7 @@ transcript/
 - `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
 - `DB_BACKEND` — set `sqlite` for Render live mode or leave as `mysql` for local MySQL
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
+- `SHOW_ALL_TRANSCRIPTIONS` — defaults to `1`, showing all saved project transcriptions in dashboard/history
 - `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
 - `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
 - `OPENAI_FALLBACK_TO_WHISPER` — set `1` only on deployments that install Whisper/Torch and have enough memory for local fallback
