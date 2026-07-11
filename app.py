@@ -44,7 +44,8 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")
 app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
 
-BASE_FOLDER = os.path.join("uploads", "transcriber")
+DATA_ROOT = os.getenv("PERSISTENT_DATA_DIR", "uploads")
+BASE_FOLDER = os.path.join(DATA_ROOT, "transcriber")
 AUDIO_FOLDER = os.path.join(BASE_FOLDER, "audio")
 TRANSCRIPT_FOLDER = os.path.join(BASE_FOLDER, "transcript")
 SUMMARY_FOLDER = os.path.join(BASE_FOLDER, "summary")
@@ -1559,10 +1560,16 @@ def download_file(filetype, filename):
 
 @app.route("/health")
 def health():
+    sqlite_db_path = None
+    if using_sqlite():
+        sqlite_db_path = os.getenv("SQLITE_DB_PATH", os.path.join(BASE_FOLDER, "transcribeflow.sqlite"))
+
     return jsonify(
         {
             "status": "ok",
             "database": "sqlite" if using_sqlite() else "mysql",
+            "data_root": DATA_ROOT,
+            "sqlite_db_path": sqlite_db_path,
             "transcription_backend": transcription_backend(),
             "groq_configured": bool(os.getenv("GROQ_API_KEY")),
             "openai_configured": bool(os.getenv("OPENAI_API_KEY")),

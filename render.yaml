@@ -2,18 +2,24 @@ services:
   - type: web
     name: transcribeflow-ai
     runtime: docker
-    plan: free
+    plan: starter
     branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    disk:
+      name: transcribeflow-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: DB_BACKEND
         value: sqlite
+      - key: PERSISTENT_DATA_DIR
+        value: /var/data
       - key: SQLITE_DB_PATH
-        value: uploads/transcriber/transcribeflow.sqlite
+        value: /var/data/transcribeflow.sqlite
       - key: SHOW_ALL_TRANSCRIPTIONS
         value: "1"
       - key: TRANSCRIPTION_BACKEND

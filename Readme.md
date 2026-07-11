@@ -9,7 +9,7 @@ TranscribeFlow AI is a Flask + Whisper web application for turning audio into ti
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
 - **Render Live App:** https://transcribeflow-ai.onrender.com/
 
-> Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite, and sends audio to Groq or OpenAI transcription APIs instead of loading Whisper/Torch on the free instance.
+> Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite on a persistent disk, and sends audio to Groq or OpenAI transcription APIs instead of loading Whisper/Torch on the web instance.
 
 ## Deploy Live on Render
 
@@ -20,6 +20,7 @@ This repository includes:
 - `render.yaml` — Render Blueprint for one-click deployment
 - `/health` — health-check endpoint for Render
 - `DB_BACKEND=sqlite` — lightweight live database mode without MySQL
+- `PERSISTENT_DATA_DIR=/var/data` — stores uploaded audio, generated files, and history on the Render disk
 - `TRANSCRIPTION_BACKEND=auto` — Render-safe transcription that prefers Groq when `GROQ_API_KEY` exists, otherwise uses OpenAI
 
 ### Render Steps
@@ -33,15 +34,45 @@ This repository includes:
 7. Wait for the Docker build to finish.
 8. Open the generated Render URL.
 
+### Persistent History on Render
+
+Render's normal service filesystem is temporary. If SQLite is stored inside the app folder, users and transcription history can disappear after a restart or redeploy. This project now writes persistent data to Render's disk mount:
+
+```text
+PERSISTENT_DATA_DIR=/var/data
+SQLITE_DB_PATH=/var/data/transcribeflow.sqlite
+```
+
+The Blueprint includes:
+
+```yaml
+disk:
+  name: transcribeflow-data
+  mountPath: /var/data
+  sizeGB: 1
+```
+
+Important: Render persistent disks are available on paid services. If this app is deployed without the disk, future history can still reset. If old history was already lost from Render's temporary filesystem and no disk snapshot or backup exists, the old records cannot be recovered; the disk prevents that from happening again.
+
+After deploy, open `/health` and confirm:
+
+```json
+{
+  "data_root": "/var/data",
+  "sqlite_db_path": "/var/data/transcribeflow.sqlite",
+  "show_all_transcriptions": true
+}
+```
+
 Live app URL:
 
 ```text
 https://transcribeflow-ai.onrender.com/
 ```
 
-Render free instances can sleep after inactivity. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
+Small Render instances can sleep or restart depending on plan and platform events. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
 
-The Render free service uses `TRANSCRIPTION_BACKEND=auto` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
+The Render service uses `TRANSCRIPTION_BACKEND=auto` and `requirements-render.txt` to prevent memory-limit restarts. For local offline Whisper transcription, run with the default `TRANSCRIPTION_BACKEND=whisper`.
 
 If uploads fail with `insufficient_quota`, the code is working but the configured OpenAI account has no available transcription credits. To avoid OpenAI billing, add `GROQ_API_KEY` in Render and set `TRANSCRIPTION_BACKEND=auto` or `groq`. You can confirm the live backend at `/health`; it should show `"transcription_backend":"groq"` and `"groq_configured":true`.
 
@@ -179,8 +210,9 @@ transcript/
 - `app.py` automatically creates missing tables and adds new columns for upgraded projects.
 - Local development uses MySQL by default.
 - Render uses SQLite mode through `DB_BACKEND=sqlite` in `render.yaml`.
+- Render stores SQLite history and generated transcript files on `/var/data` through `PERSISTENT_DATA_DIR=/var/data` and `SQLITE_DB_PATH=/var/data/transcribeflow.sqlite`.
 - Local development uses real Whisper by default through `TRANSCRIPTION_BACKEND=whisper`.
-- Render free uses `TRANSCRIPTION_BACKEND=openai` so login, upload, history, exports, and UI work without memory crashes.
+- Render uses `TRANSCRIPTION_BACKEND=auto` so login, upload, history, exports, and UI work without loading local Whisper/Torch.
 - New passwords are stored with Werkzeug password hashing.
 - Existing plaintext passwords are migrated to hashed passwords the next time the user logs in successfully.
 
@@ -197,6 +229,7 @@ transcript/
 - `WHISPER_MODEL` — Whisper model name, default `small`
 - `WHISPER_FP16` — set `1` to enable FP16 on compatible GPUs
 - `DB_BACKEND` — set `sqlite` for Render live mode or leave as `mysql` for local MySQL
+- `PERSISTENT_DATA_DIR` — base folder for uploads and generated files; set to `/var/data` on Render with a persistent disk
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
 - `SHOW_ALL_TRANSCRIPTIONS` — defaults to `1`, showing all saved project transcriptions in dashboard/history
 - `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
