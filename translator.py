@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 import requests
 
@@ -112,6 +113,51 @@ def call_translation_model(prompt, provider):
     )
 
 
+def strip_code_fences(text):
+    text = (text or "").strip()
+    fence_match = re.fullmatch(r"```(?:json|JSON)?\s*(.*?)\s*```", text, flags=re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).strip()
+    return text
+
+
+def extract_json_object(text):
+    text = strip_code_fences(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = text[start : end + 1]
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def normalize_translation_payload(translation):
+    translation = dict(translation or {})
+    raw_text = translation.get("translated_text") or ""
+    raw_summary = translation.get("translated_summary") or ""
+
+    parsed = extract_json_object(raw_text)
+    if parsed:
+        raw_text = parsed.get("translated_text") or parsed.get("text") or ""
+        raw_summary = raw_summary or parsed.get("translated_summary") or parsed.get("summary") or ""
+
+    summary_parsed = extract_json_object(raw_summary)
+    if summary_parsed:
+        raw_summary = summary_parsed.get("translated_summary") or summary_parsed.get("summary") or ""
+
+    translation["translated_text"] = strip_code_fences(raw_text)
+    translation["translated_summary"] = strip_code_fences(raw_summary)
+    return translation
+
+
 def translate_transcript_bundle(transcript, summary, source_language, target_language):
     transcript = (transcript or "").strip()
     summary = (summary or "").strip()
@@ -133,8 +179,8 @@ def translate_transcript_bundle(transcript, summary, source_language, target_lan
     source_name = language_name(source_language)
     prompt = (
         "Translate the transcript and summary accurately. Preserve timestamps like [00:01:23], "
-        "speaker labels, names, numbers, and action-item wording. Return valid JSON only with keys "
-        "`translated_text` and `translated_summary`.\n\n"
+        "speaker labels, names, numbers, and action-item wording. Return plain valid JSON only with keys "
+        "`translated_text` and `translated_summary`. Do not wrap the JSON in markdown or code fences.\n\n"
         f"Source language: {source_name}\n"
         f"Target language: {target_name}\n\n"
         f"Transcript:\n{transcript[:12000]}\n\n"
@@ -143,12 +189,11 @@ def translate_transcript_bundle(transcript, summary, source_language, target_lan
 
     try:
         content = call_translation_model(prompt, provider)
-        try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            parsed = {"translated_text": content, "translated_summary": ""}
+        parsed = extract_json_object(content)
+        if not parsed:
+            parsed = {"translated_text": strip_code_fences(content), "translated_summary": ""}
 
-        return {
+        return normalize_translation_payload({
             "enabled": True,
             "target_language": target_name,
             "translated_text": (parsed.get("translated_text") or "").strip(),
@@ -156,7 +201,7 @@ def translate_transcript_bundle(transcript, summary, source_language, target_lan
             "status": "completed",
             "provider": provider["name"],
             "error": "",
-        }
+        })
     except RuntimeError as exc:
         return {
             "enabled": True,

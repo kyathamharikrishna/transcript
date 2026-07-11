@@ -37,7 +37,7 @@ from transcription_features import (
     language_display,
     word_count,
 )
-from translator import TRANSLATION_LANGUAGE_OPTIONS, translate_transcript_bundle
+from translator import TRANSLATION_LANGUAGE_OPTIONS, normalize_translation_payload, translate_transcript_bundle
 
 
 app = Flask(__name__)
@@ -791,6 +791,7 @@ def load_payload(record):
             payload.setdefault("insights", {})
             payload.setdefault("speaker_profile", {})
             payload.setdefault("translation", {})
+            payload["translation"] = normalize_translation_payload(payload.get("translation"))
             return payload
 
     transcript = ""
