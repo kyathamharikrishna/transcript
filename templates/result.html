@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Transcript Result | TranscribeFlow AI{% endblock %}
+{% block title %}Transcript Result | TranscribeFlow{% endblock %}
 
 {% block content %}
 <section class="panel page-header result-header reveal">
   <div>
     <span class="eyebrow">Completed analysis</span>
     <h1>{{ payload.original_filename or "Transcript result" }}</h1>
-    <p class="muted">Timestamped transcript, confidence highlights, action items, summary, downloads, and Q&A.</p>
+    <p class="muted">Speaker transcript, confidence highlights, action items, summary, downloads, and Q&A.</p>
   </div>
   <div class="download-buttons">
     {% if files.combined %}<a class="btn btn-primary" href="{{ url_for('download_file', filetype='combined', filename=files.combined) }}"><i class="fa fa-download"></i> Report</a>{% endif %}
@@ -115,28 +115,27 @@
   <div class="panel transcript-panel reveal">
     <div class="section-heading">
       <div>
-        <span class="eyebrow">Speaker-labelled transcript</span>
-        <h2>Timestamped transcript</h2>
+        <span class="eyebrow">Speaker transcript</span>
+        <h2>Transcript</h2>
       </div>
       <button class="btn btn-soft" data-copy-target="timestampedTranscript"><i class="fa-regular fa-copy"></i> Copy</button>
     </div>
 
     <div id="timestampedTranscript" class="transcript-list">
-      {% if segments %}
-      {% for segment in segments %}
-      <article class="segment {% if segment.low_confidence %}segment-low{% endif %}">
+      {% if speaker_turns %}
+      {% for turn in speaker_turns %}
+      <article class="segment {% if turn.low_confidence %}segment-low{% endif %}">
         <div class="segment-meta">
-          <span>[{{ segment.timestamp }}]</span>
-          <strong>{{ segment.speaker }}</strong>
-          {% if segment.confidence_percent is not none %}
-          <small>{{ segment.confidence_percent }}% confidence</small>
+          <strong>{{ turn.speaker }}</strong>
+          {% if turn.confidence_percent is not none %}
+          <small>{{ turn.confidence_percent }}% confidence</small>
           {% endif %}
         </div>
         <p>
-          {% if segment.words %}
-            {% for word in segment.words %}<span class="{% if word.low_confidence %}low-confidence{% endif %}" title="{% if word.confidence_percent is not none %}Confidence {{ word.confidence_percent }}%{% endif %}">{{ word.text }}</span>{% endfor %}
+          {% if turn.words %}
+            {% for word in turn.words %}<span class="{% if word.low_confidence %}low-confidence{% endif %}" title="{% if word.confidence_percent is not none %}Confidence {{ word.confidence_percent }}%{% endif %}">{{ word.text }}</span>{% endfor %}
           {% else %}
-            {{ segment.text }}
+            {{ turn.text }}
           {% endif %}
         </p>
       </article>

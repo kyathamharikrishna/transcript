@@ -45,6 +45,67 @@ ACTION_PATTERNS = [
     ),
 ]
 
+TIMESTAMP_LINE_RE = re.compile(
+    r"^\s*\[\d{2}:\d{2}:\d{2}(?:[.,]\d{1,3})?\]\s*(?:(?P<speaker>[^:\n]{1,80}):\s*)?(?P<text>.*)$"
+)
+SPEAKER_LINE_RE = re.compile(r"^\s*(?P<speaker>[^:\n]{1,80}\d[^:\n]{0,40}):\s*(?P<text>.+)$")
+
+
+def _append_speaker_paragraph(paragraphs, speaker, text):
+    text = re.sub(r"\s+", " ", (text or "").strip())
+    if not text:
+        return
+
+    speaker = re.sub(r"\s+", " ", (speaker or "").strip())
+    if speaker:
+        if paragraphs and paragraphs[-1]["speaker"] == speaker:
+            paragraphs[-1]["text"] = f"{paragraphs[-1]['text']} {text}".strip()
+        else:
+            paragraphs.append({"speaker": speaker, "text": text})
+        return
+
+    if paragraphs and not paragraphs[-1]["speaker"]:
+        paragraphs[-1]["text"] = f"{paragraphs[-1]['text']} {text}".strip()
+    else:
+        paragraphs.append({"speaker": "", "text": text})
+
+
+def clean_speaker_transcript(text):
+    paragraphs = []
+
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        timestamp_match = TIMESTAMP_LINE_RE.match(line)
+        if timestamp_match:
+            _append_speaker_paragraph(
+                paragraphs,
+                timestamp_match.group("speaker"),
+                timestamp_match.group("text"),
+            )
+            continue
+
+        speaker_match = SPEAKER_LINE_RE.match(line)
+        if speaker_match:
+            _append_speaker_paragraph(
+                paragraphs,
+                speaker_match.group("speaker"),
+                speaker_match.group("text"),
+            )
+            continue
+
+        _append_speaker_paragraph(paragraphs, paragraphs[-1]["speaker"] if paragraphs else "", line)
+
+    cleaned = []
+    for paragraph in paragraphs:
+        if paragraph["speaker"]:
+            cleaned.append(f"{paragraph['speaker']}: {paragraph['text']}")
+        else:
+            cleaned.append(paragraph["text"])
+    return "\n\n".join(cleaned)
+
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 WORD_RE = re.compile(r"\b[\w'-]+\b", re.UNICODE)
 KEYWORD_RE = re.compile(r"\b[a-zA-Z][a-zA-Z'-]{2,}\b")
@@ -278,11 +339,58 @@ def build_segments(whisper_segments):
     return segments
 
 
-def create_timestamped_transcript(segments):
-    lines = []
+def create_speaker_turns(segments):
+    turns = []
+
     for segment in segments or []:
-        lines.append(f"[{segment['timestamp']}] {segment['speaker']}: {segment['text']}")
-    return "\n".join(lines)
+        speaker = segment.get("speaker") or "Speaker 1"
+        text = re.sub(r"\s+", " ", (segment.get("text") or "").strip())
+        words = [dict(word) for word in (segment.get("words") or [])]
+        confidence = segment.get("confidence")
+
+        if turns and turns[-1]["speaker"] == speaker:
+            if text:
+                turns[-1]["text"] = f"{turns[-1]['text']} {text}".strip()
+            if words and turns[-1]["words"]:
+                first_word = words[0].get("text", "")
+                if first_word and not first_word.startswith((" ", "\n", ".", ",", "!", "?", ":", ";", "'", '"')):
+                    words[0]["text"] = " " + first_word
+            turns[-1]["words"].extend(words)
+            turns[-1]["low_confidence"] = turns[-1]["low_confidence"] or segment.get("low_confidence", False)
+            if confidence is not None:
+                turns[-1]["confidences"].append(confidence)
+            continue
+
+        turns.append(
+            {
+                "speaker": speaker,
+                "text": text,
+                "words": list(words),
+                "low_confidence": segment.get("low_confidence", False),
+                "confidences": [confidence] if confidence is not None else [],
+            }
+        )
+
+    for turn in turns:
+        confidences = turn.pop("confidences", [])
+        if confidences:
+            average_confidence = sum(confidences) / len(confidences)
+            turn["confidence"] = average_confidence
+            turn["confidence_percent"] = round(average_confidence * 100)
+        else:
+            turn["confidence"] = None
+            turn["confidence_percent"] = None
+
+    return turns
+
+
+def create_timestamped_transcript(segments):
+    paragraphs = []
+    for turn in create_speaker_turns(segments):
+        text = turn.get("text", "").strip()
+        if text:
+            paragraphs.append(f"{turn['speaker']}: {text}")
+    return clean_speaker_transcript("\n\n".join(paragraphs))
 
 
 def create_srt(segments):

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: transcribeflow-ai
+    name: transcribeflow
     runtime: docker
     plan: starter
     branch: main

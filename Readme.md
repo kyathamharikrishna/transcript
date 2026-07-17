@@ -1,13 +1,13 @@
-# TranscribeFlow AI
+# TranscribeFlow
 
-TranscribeFlow AI is a Flask + Whisper web application for turning audio into timestamped transcripts, translations, summaries, action items, subtitles, downloadable reports, safe speaker analytics, and transcript Q&A.
+TranscribeFlow is a Flask + Whisper web application for turning audio into speaker transcripts, translations, summaries, action items, subtitles, downloadable reports, safe speaker analytics, and transcript Q&A.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-AI%20SaaS-black.svg)
 
 - **GitHub Repository:** https://github.com/kyathamharikrishna/transcript
-- **Render Live App:** https://transcribeflow-ai.onrender.com/
+- **Render Live App:** https://transcribeflow.onrender.com/
 
 > Render hosts the real Flask backend with a lightweight API transcription mode. The included `render.yaml` uses Docker, starts Gunicorn, stores records in SQLite on a persistent disk, and sends audio to Groq or OpenAI transcription APIs instead of loading Whisper/Torch on the web instance.
 
@@ -67,7 +67,7 @@ After deploy, open `/health` and confirm:
 Live app URL:
 
 ```text
-https://transcribeflow-ai.onrender.com/
+https://transcribeflow.onrender.com/
 ```
 
 Small Render instances can sleep or restart depending on plan and platform events. First load after sleep may take a little while, and Whisper processing is CPU-heavy.
@@ -80,7 +80,7 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 
 ### Tier 1
 
-- **Timestamped transcript with speaker labels** — every Whisper segment is displayed like `[00:01:23] Speaker 1: ...`.
+- **Natural speaker transcript** — consecutive segments from the same speaker are displayed as flowing paragraphs without timestamp prefixes.
 - **Keyword and action item extractor** — deadline, todo, follow-up, budget, and decision phrases are pulled into a separate action panel.
 - **Q&A on transcript** — users can ask questions about their own transcript. If `ANTHROPIC_API_KEY` is configured, Claude answers with retrieved transcript context; otherwise a local retrieval fallback answers from matching transcript sections.
 - **JWT authentication** — login issues an HTTP-only signed token, registration returns users to Login, and returning users can access persisted history after authentication.
@@ -219,7 +219,7 @@ transcript/
 
 ## Output Files
 
-- **Transcript TXT:** speaker-labelled timestamped transcript
+- **Transcript TXT:** speaker-labelled transcript without timestamp prefixes
 - **Summary TXT:** concise AI summary
 - **Combined Report TXT:** metadata, summary, translation, action items, speaker analytics, and transcript
 - **JSON:** complete structured payload with stats, files, segments, translation, speaker profile, insights, and action items

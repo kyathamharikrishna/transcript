@@ -35,6 +35,8 @@ from transcription_features import (
     build_meeting_insights,
     build_speaker_profile,
     build_segments,
+    clean_speaker_transcript,
+    create_speaker_turns,
     create_srt,
     create_timestamped_transcript,
     extract_action_items,
@@ -534,7 +536,7 @@ def normalize_api_segments(payload):
 def openai_key_help_message():
     return (
         "Render OPENAI_API_KEY is invalid or still a placeholder. "
-        "Open Render Dashboard → transcribeflow-ai → Environment, replace OPENAI_API_KEY "
+        "Open Render Dashboard → transcribeflow → Environment, replace OPENAI_API_KEY "
         "with a real OpenAI API key, save changes, then redeploy."
     )
 
@@ -878,8 +880,12 @@ def load_payload(record):
             payload.setdefault("stats", {})
             payload.setdefault("insights", {})
             payload.setdefault("speaker_profile", {})
+            payload.setdefault("speaker_turns", create_speaker_turns(payload.get("segments", [])))
             payload.setdefault("translation", {})
             payload["translation"] = normalize_translation_payload(payload.get("translation"))
+            payload["timestamped_transcript"] = clean_speaker_transcript(
+                payload.get("timestamped_transcript") or payload.get("transcript") or ""
+            )
             return payload
 
     transcript = ""
@@ -890,7 +896,7 @@ def load_payload(record):
         path = os.path.join(TRANSCRIPT_FOLDER, secure_filename(transcript_file))
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as file:
-                transcript = file.read()
+                transcript = clean_speaker_transcript(file.read())
     if summary_file:
         path = os.path.join(SUMMARY_FOLDER, secure_filename(summary_file))
         if os.path.exists(path):
@@ -899,9 +905,10 @@ def load_payload(record):
 
     return {
         "transcript": transcript,
-        "timestamped_transcript": transcript,
+        "timestamped_transcript": clean_speaker_transcript(transcript),
         "summary": summary,
         "segments": [],
+        "speaker_turns": [],
         "action_items": [],
         "insights": {},
         "speaker_profile": {},
@@ -958,7 +965,7 @@ def build_combined_report(payload):
 
 {translation['translated_summary']}
 """
-    return f"""========== TRANSCRIBEFLOW AI REPORT ==========
+    return f"""========== TRANSCRIBEFLOW REPORT ==========
 
 Original File: {payload['original_filename']}
 Detected Language: {stats['detected_language']}
@@ -982,7 +989,7 @@ Speaking Pace: {speaker_profile.get('pace_label', 'Unknown')} ({speaker_profile.
 
 {actions}
 
-========== TIMESTAMPED TRANSCRIPT ==========
+========== TRANSCRIPT ==========
 
 {payload['timestamped_transcript']}
 """
@@ -1069,7 +1076,7 @@ def process_transcription_job(
             job_id,
             status="processing",
             progress=55,
-            message="Building timestamped transcript",
+            message="Building speaker transcript",
         )
 
         segments = build_segments(result.get("segments", []))
@@ -1080,6 +1087,7 @@ def process_transcription_job(
         detected_language_code = result.get("language") or forced_language or "unknown"
         detected_language = language_display(detected_language_code)
         timestamped_transcript = create_timestamped_transcript(segments)
+        speaker_turns = create_speaker_turns(segments)
         action_items = extract_action_items(segments)
         insights = build_meeting_insights(segments, transcript, action_items)
         speaker_profile = build_speaker_profile(segments, transcript, detected_language)
@@ -1126,6 +1134,7 @@ def process_transcription_job(
             "audio_file": audio_filename,
             "transcript": transcript,
             "timestamped_transcript": timestamped_transcript,
+            "speaker_turns": speaker_turns,
             "summary": summary,
             "detected_language": detected_language,
             "detected_language_code": detected_language_code,
@@ -1582,6 +1591,7 @@ def transcription_result(job_id):
         speaker_profile=payload.get("speaker_profile", {}),
         translation=payload.get("translation", {}),
         segments=payload.get("segments", []),
+        speaker_turns=payload.get("speaker_turns") or create_speaker_turns(payload.get("segments", [])),
         action_items=payload.get("action_items", []),
         files=payload.get("files", {}),
     )

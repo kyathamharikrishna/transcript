@@ -4,6 +4,8 @@ import re
 
 import requests
 
+from transcription_features import clean_speaker_transcript
+
 
 TRANSLATION_LANGUAGE_OPTIONS = [
     ("none", "Do not translate"),
@@ -153,7 +155,7 @@ def normalize_translation_payload(translation):
     if summary_parsed:
         raw_summary = summary_parsed.get("translated_summary") or summary_parsed.get("summary") or ""
 
-    translation["translated_text"] = strip_code_fences(raw_text)
+    translation["translated_text"] = clean_speaker_transcript(strip_code_fences(raw_text))
     translation["translated_summary"] = strip_code_fences(raw_summary)
     return translation
 
@@ -178,7 +180,7 @@ def translate_transcript_bundle(transcript, summary, source_language, target_lan
     target_name = language_name(target_language)
     source_name = language_name(source_language)
     prompt = (
-        "Translate the transcript and summary accurately. Preserve timestamps like [00:01:23], "
+        "Translate the transcript and summary accurately. Do not add timestamps. Preserve the paragraph flow, "
         "speaker labels, names, numbers, and action-item wording. Return plain valid JSON only with keys "
         "`translated_text` and `translated_summary`. Do not wrap the JSON in markdown or code fences.\n\n"
         f"Source language: {source_name}\n"
