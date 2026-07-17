@@ -16,6 +16,8 @@ services:
         generateValue: true
       - key: JWT_COOKIE_SECURE
         value: "1"
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: DB_BACKEND
         value: sqlite
       - key: PERSISTENT_DATA_DIR

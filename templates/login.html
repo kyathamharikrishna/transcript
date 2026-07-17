@@ -47,7 +47,61 @@
       <button type="submit" class="btn btn-primary">Login</button>
     </form>
 
+    {% if google_client_id %}
+    <div class="auth-divider"><span>or</span></div>
+    <div id="googleLoginError" class="alert alert-error hidden"></div>
+    <div id="g_id_onload"
+      data-client_id="{{ google_client_id }}"
+      data-callback="handleGoogleCredential"
+      data-auto_prompt="false">
+    </div>
+    <div class="g_id_signin"
+      data-type="standard"
+      data-size="large"
+      data-theme="outline"
+      data-text="signin_with"
+      data-shape="rectangular"
+      data-logo_alignment="left">
+    </div>
+    {% endif %}
+
     <p class="auth-switch">New here? <a href="{{ url_for('register_page') }}">Create an account</a></p>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+{% if google_client_id %}
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+  window.handleGoogleCredential = async function handleGoogleCredential(response) {
+    const errorBox = document.getElementById("googleLoginError");
+    if (errorBox) {
+      errorBox.classList.add("hidden");
+      errorBox.textContent = "";
+    }
+
+    try {
+      const loginResponse = await fetch("{{ url_for('google_login') }}", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({ credential: response.credential })
+      });
+      const payload = await parseJsonResponse(loginResponse);
+      if (!loginResponse.ok) {
+        throw new Error(payload.error || "Google login failed.");
+      }
+      window.location.href = payload.redirect_url || "{{ url_for('dashboard') }}";
+    } catch (error) {
+      if (errorBox) {
+        errorBox.textContent = error.message || "Google login failed.";
+        errorBox.classList.remove("hidden");
+      }
+    }
+  };
+</script>
+{% endif %}
 {% endblock %}

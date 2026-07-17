@@ -83,7 +83,7 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 - **Natural speaker transcript** — consecutive segments from the same speaker are displayed as flowing paragraphs without timestamp prefixes.
 - **Keyword and action item extractor** — deadline, todo, follow-up, budget, and decision phrases are pulled into a separate action panel.
 - **Q&A on transcript** — users can ask questions about their own transcript. If `ANTHROPIC_API_KEY` is configured, Claude answers with retrieved transcript context; otherwise a local retrieval fallback answers from matching transcript sections.
-- **JWT authentication** — login issues an HTTP-only signed token, registration returns users to Login, and returning users can access persisted history after authentication.
+- **JWT authentication** — login issues an HTTP-only signed token, registration returns users to Login, optional Google Sign-In is available with `GOOGLE_CLIENT_ID`, and returning users can access persisted history after authentication.
 
 ### Tier 2
 
@@ -212,6 +212,7 @@ transcript/
 - Local development uses MySQL by default.
 - Render uses SQLite mode through `DB_BACKEND=sqlite` in `render.yaml`.
 - Render stores SQLite history and generated transcript files on `/var/data` through `PERSISTENT_DATA_DIR=/var/data` and `SQLITE_DB_PATH=/var/data/transcribeflow.sqlite`.
+- Transcriptions are linked to users by permanent `user_id`, with legacy `user_email` rows repaired on login.
 - Local development uses real Whisper by default through `TRANSCRIPTION_BACKEND=whisper`.
 - Render uses `TRANSCRIPTION_BACKEND=auto` so login, upload, history, exports, and UI work without loading local Whisper/Torch.
 - New passwords are stored with Werkzeug password hashing.
@@ -235,6 +236,7 @@ transcript/
 - `SHOW_ALL_TRANSCRIPTIONS` — defaults to `1`, showing all saved project transcriptions in dashboard/history
 - `JWT_EXPIRY_DAYS` — signed login token lifetime, default `7`
 - `JWT_COOKIE_SECURE` — set `1` on HTTPS deployments such as Render
+- `GOOGLE_CLIENT_ID` — optional Google Sign-In client ID; the Google button is hidden when unset
 - `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
 - `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
 - `OPENAI_FALLBACK_TO_WHISPER` — set `1` only on deployments that install Whisper/Torch and have enough memory for local fallback

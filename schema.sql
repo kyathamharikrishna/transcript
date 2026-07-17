@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS transcriptions (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
     user_email VARCHAR(100),
     job_id VARCHAR(64),
     original_filename VARCHAR(255),
@@ -21,5 +22,6 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     word_count INT DEFAULT 0,
     processing_seconds FLOAT DEFAULT 0,
     action_items_count INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );

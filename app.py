@@ -26,6 +26,7 @@ from flask import (
     url_for,
 )
 import mysql.connector
+import requests
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -332,6 +333,7 @@ def _ensure_database_schema_once():
             """
             CREATE TABLE IF NOT EXISTS transcriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
                 user_email TEXT,
                 job_id TEXT,
                 original_filename TEXT,
@@ -346,7 +348,8 @@ def _ensure_database_schema_once():
                 word_count INTEGER DEFAULT 0,
                 processing_seconds REAL DEFAULT 0,
                 action_items_count INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
             )
             """
         )
@@ -354,6 +357,7 @@ def _ensure_database_schema_once():
         cursor.execute("PRAGMA table_info(transcriptions)")
         existing_columns = {row["name"] for row in cursor.fetchall()}
         additions = {
+            "user_id": "INTEGER",
             "job_id": "TEXT",
             "original_filename": "TEXT",
             "combined_file": "TEXT",
@@ -368,6 +372,26 @@ def _ensure_database_schema_once():
         for column, definition in additions.items():
             if column not in existing_columns:
                 cursor.execute(f"ALTER TABLE transcriptions ADD COLUMN {column} {definition}")
+
+        cursor.execute(
+            """
+            UPDATE transcriptions
+            SET user_id = (
+                SELECT users.id
+                FROM users
+                WHERE LOWER(users.email) = LOWER(transcriptions.user_email)
+                ORDER BY users.id DESC
+                LIMIT 1
+            )
+            WHERE user_id IS NULL
+              AND user_email IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM users
+                  WHERE LOWER(users.email) = LOWER(transcriptions.user_email)
+              )
+            """
+        )
 
         conn.commit()
         cursor.close()
@@ -393,6 +417,7 @@ def _ensure_database_schema_once():
         """
         CREATE TABLE IF NOT EXISTS transcriptions (
             id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT,
             user_email VARCHAR(100),
             job_id VARCHAR(64),
             original_filename VARCHAR(255),
@@ -407,12 +432,14 @@ def _ensure_database_schema_once():
             word_count INT DEFAULT 0,
             processing_seconds FLOAT DEFAULT 0,
             action_items_count INT DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )
         """
     )
 
     additions = {
+        "user_id": "INT",
         "job_id": "VARCHAR(64)",
         "original_filename": "VARCHAR(255)",
         "combined_file": "VARCHAR(255)",
@@ -428,6 +455,19 @@ def _ensure_database_schema_once():
         cursor.execute("SHOW COLUMNS FROM transcriptions LIKE %s", (column,))
         if cursor.fetchone() is None:
             cursor.execute(f"ALTER TABLE transcriptions ADD COLUMN {column} {definition}")
+
+    cursor.execute(
+        """
+        UPDATE transcriptions t
+        JOIN (
+            SELECT LOWER(email) AS email_key, MAX(id) AS user_id
+            FROM users
+            GROUP BY LOWER(email)
+        ) u ON u.email_key = LOWER(t.user_email)
+        SET t.user_id = u.user_id
+        WHERE t.user_id IS NULL
+        """
+    )
 
     conn.commit()
     cursor.close()
@@ -684,11 +724,12 @@ def get_job(job_id):
         return dict(job) if job else None
 
 
-def create_job(user_email, original_filename):
+def create_job(user_id, user_email, original_filename):
     job_id = uuid.uuid4().hex
     with JOBS_LOCK:
         JOBS[job_id] = {
             "job_id": job_id,
+            "user_id": user_id,
             "user_email": user_email,
             "original_filename": original_filename,
             "status": "queued",
@@ -710,6 +751,7 @@ def insert_transcription_record(record):
                     """
                 INSERT INTO transcriptions
                 (
+                    user_id,
                     user_email,
                     job_id,
                     original_filename,
@@ -725,10 +767,11 @@ def insert_transcription_record(record):
                     processing_seconds,
                     action_items_count
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 ),
                 (
+                    record.get("user_id"),
                     record["user_email"],
                     record["job_id"],
                     record["original_filename"],
@@ -754,7 +797,7 @@ def insert_transcription_record(record):
     return db_retry(operation)
 
 
-def get_transcription_by_job(job_id, user_email=None):
+def get_transcription_by_job(job_id, user_id=None, user_email=None):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
@@ -771,6 +814,22 @@ def get_transcription_by_job(job_id, user_email=None):
                     """
                     ),
                     (job_id,),
+                )
+            elif user_id:
+                cursor.execute(
+                    adapt_sql(
+                        """
+                    SELECT *
+                    FROM transcriptions
+                    WHERE job_id = %s
+                      AND (
+                          user_id = %s
+                          OR (user_id IS NULL AND LOWER(user_email) = LOWER(%s))
+                      )
+                    LIMIT 1
+                    """
+                    ),
+                    (job_id, user_id, user_email),
                 )
             else:
                 cursor.execute(
@@ -792,7 +851,7 @@ def get_transcription_by_job(job_id, user_email=None):
     return db_retry(operation)
 
 
-def get_history(user_email=None, limit=50):
+def get_history(user_id=None, user_email=None, limit=50):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
@@ -801,6 +860,7 @@ def get_history(user_email=None, limit=50):
             query = """
             SELECT
                 id,
+                user_id,
                 user_email,
                 job_id,
                 original_filename,
@@ -820,8 +880,12 @@ def get_history(user_email=None, limit=50):
             """
             params = []
             if not show_all_transcriptions():
-                query += " WHERE LOWER(user_email) = LOWER(%s)"
-                params.append(user_email)
+                if user_id:
+                    query += " WHERE user_id = %s OR (user_id IS NULL AND LOWER(user_email) = LOWER(%s))"
+                    params.extend([user_id, user_email])
+                else:
+                    query += " WHERE LOWER(user_email) = LOWER(%s)"
+                    params.append(user_email)
             query += " ORDER BY created_at DESC LIMIT %s"
             params.append(limit)
             cursor.execute(adapt_sql(query), tuple(params))
@@ -838,7 +902,7 @@ def get_history(user_email=None, limit=50):
     return records
 
 
-def get_dashboard_stats(user_email=None):
+def get_dashboard_stats(user_id=None, user_email=None):
     def operation():
         ensure_database_schema()
         conn = get_db_connection()
@@ -854,8 +918,12 @@ def get_dashboard_stats(user_email=None):
             """
             params = []
             if not show_all_transcriptions():
-                query += " WHERE LOWER(user_email) = LOWER(%s)"
-                params.append(user_email)
+                if user_id:
+                    query += " WHERE user_id = %s OR (user_id IS NULL AND LOWER(user_email) = LOWER(%s))"
+                    params.extend([user_id, user_email])
+                else:
+                    query += " WHERE LOWER(user_email) = LOWER(%s)"
+                    params.append(user_email)
             cursor.execute(adapt_sql(query), tuple(params))
             return row_to_dict(cursor.fetchone()) or {}
         finally:
@@ -1000,6 +1068,7 @@ def process_transcription_job(
     audio_path,
     audio_filename,
     original_filename,
+    user_id,
     user_email,
     forced_language,
     target_translation_language,
@@ -1128,6 +1197,7 @@ def process_transcription_job(
 
         payload = {
             "job_id": job_id,
+            "user_id": user_id,
             "user_email": user_email,
             "original_filename": original_filename,
             "created_at": datetime.now().isoformat(timespec="seconds"),
@@ -1169,6 +1239,7 @@ def process_transcription_job(
 
         record_id = insert_transcription_record(
             {
+                "user_id": user_id,
                 "user_email": user_email,
                 "job_id": job_id,
                 "original_filename": original_filename,
@@ -1205,11 +1276,11 @@ def process_transcription_job(
         )
 
 
-def dashboard_context(user_email, limit=5):
+def dashboard_context(user_id, user_email, limit=5):
     try:
         return {
-            "recent_records": get_history(user_email, limit=limit),
-            "stats": get_dashboard_stats(user_email),
+            "recent_records": get_history(user_id, user_email, limit=limit),
+            "stats": get_dashboard_stats(user_id, user_email),
             "show_all_history": show_all_transcriptions(),
             "db_error": None,
         }
@@ -1246,17 +1317,21 @@ def password_matches(stored_password, password):
 
 
 def login_user_session(user, email, password=None):
+    user_id = user.get("id")
+    session["user_id"] = user_id
     session["user_email"] = email
     session["user_name"] = user.get("name") or email.split("@")[0]
+    link_legacy_transcriptions_to_user(user_id, email)
     if password and (user.get("password") or "") == password:
-        update_user_password_hash(email, password)
+        update_user_password_hash(user_id, password)
 
 
 def authenticated_redirect(user, email, password=None, endpoint="dashboard"):
     login_user_session(user, email, password)
     token = create_jwt(
         {
-            "sub": email,
+            "sub": str(user.get("id") or email),
+            "email": email,
             "name": session.get("user_name") or email.split("@")[0],
             "scope": "transcriptions:read transcriptions:write",
         }
@@ -1278,14 +1353,53 @@ def load_user_from_jwt():
     if not claims:
         return
 
-    session["user_email"] = normalize_email(claims.get("sub"))
-    session["user_name"] = claims.get("name") or session["user_email"].split("@")[0]
+    subject = str(claims.get("sub") or "")
+    email = normalize_email(claims.get("email") or (subject if "@" in subject else ""))
+    user = None
+    if subject.isdigit():
+        user = fetch_user_by_id(int(subject))
+        if user:
+            email = normalize_email(user.get("email"))
+    if not user and email:
+        user = fetch_user_by_email(email)
+    if not user:
+        return
+
+    session["user_id"] = user.get("id")
+    session["user_email"] = normalize_email(user.get("email"))
+    session["user_name"] = user.get("name") or session["user_email"].split("@")[0]
 
 
-def record_access_email():
-    if show_all_transcriptions():
-        return None
+def current_user_id():
+    return session.get("user_id")
+
+
+def current_user_email():
     return session.get("user_email")
+
+
+def record_access_identity():
+    if show_all_transcriptions():
+        return None, None
+    return current_user_id(), current_user_email()
+
+
+def fetch_user_by_id(user_id):
+    if not user_id:
+        return None
+
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn, dictionary=True)
+        try:
+            cursor.execute(adapt_sql("SELECT * FROM users WHERE id = %s LIMIT 1"), (user_id,))
+            return row_to_dict(cursor.fetchone())
+        finally:
+            cursor.close()
+            conn.close()
+
+    return db_retry(operation)
 
 
 def fetch_user_by_email(email):
@@ -1316,14 +1430,24 @@ def find_matching_user(email, password):
     return None
 
 
-def update_user_password_hash(email, password):
+def link_legacy_transcriptions_to_user(user_id, email):
+    if not user_id or not email:
+        return None
+
     def operation():
+        ensure_database_schema()
         conn = get_db_connection()
         cursor = get_cursor(conn)
         try:
             cursor.execute(
-                adapt_sql("UPDATE users SET password = %s WHERE LOWER(email) = LOWER(%s)"),
-                (generate_password_hash(password), email),
+                adapt_sql(
+                    """
+                    UPDATE transcriptions
+                    SET user_id = %s
+                    WHERE LOWER(user_email) = LOWER(%s)
+                    """
+                ),
+                (user_id, email),
             )
             conn.commit()
         finally:
@@ -1331,6 +1455,92 @@ def update_user_password_hash(email, password):
             conn.close()
 
     return db_retry(operation)
+
+
+def create_user(name, email, password_hash):
+    def operation():
+        ensure_database_schema()
+        conn = get_db_connection()
+        cursor = get_cursor(conn)
+        try:
+            cursor.execute(
+                adapt_sql("INSERT INTO users (name, email, password) VALUES (%s, %s, %s)"),
+                (name, email, password_hash),
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            cursor.close()
+            conn.close()
+
+    user_id = db_retry(operation)
+    return fetch_user_by_id(user_id) or fetch_user_by_email(email)
+
+
+def update_user_password_hash(user_id, password):
+    if not user_id:
+        return None
+
+    def operation():
+        conn = get_db_connection()
+        cursor = get_cursor(conn)
+        try:
+            cursor.execute(
+                adapt_sql("UPDATE users SET password = %s WHERE id = %s"),
+                (generate_password_hash(password), user_id),
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+            conn.close()
+
+    return db_retry(operation)
+
+
+def google_client_id():
+    return (os.getenv("GOOGLE_CLIENT_ID") or "").strip()
+
+
+def verify_google_id_token(credential):
+    client_id = google_client_id()
+    if not client_id:
+        raise RuntimeError("Google sign-in is not configured. Add GOOGLE_CLIENT_ID in Render.")
+
+    response = requests.get(
+        "https://oauth2.googleapis.com/tokeninfo",
+        params={"id_token": credential},
+        timeout=15,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError("Google sign-in token could not be verified.")
+
+    payload = response.json()
+    if payload.get("aud") != client_id:
+        raise RuntimeError("Google sign-in token is for a different app.")
+    if payload.get("email_verified") not in {True, "true", "True", "1", 1}:
+        raise RuntimeError("Google account email is not verified.")
+
+    email = normalize_email(payload.get("email"))
+    if not email:
+        raise RuntimeError("Google did not return an email address.")
+    return {
+        "email": email,
+        "name": (payload.get("name") or email.split("@")[0]).strip(),
+    }
+
+
+def get_or_create_google_user(profile):
+    user = fetch_user_by_email(profile["email"])
+    if user:
+        return user
+
+    password_hash = generate_password_hash(f"google:{uuid.uuid4().hex}")
+    return create_user(profile["name"], profile["email"], password_hash)
+
+
+@app.context_processor
+def inject_auth_settings():
+    return {"google_client_id": google_client_id()}
 
 
 @app.errorhandler(413)
@@ -1406,21 +1616,7 @@ def register():
                 email=email,
             )
 
-        def operation():
-            ensure_database_schema()
-            conn = get_db_connection()
-            cursor = get_cursor(conn)
-            try:
-                cursor.execute(
-                    adapt_sql("INSERT INTO users (name, email, password) VALUES (%s, %s, %s)"),
-                    (name, email, password),
-                )
-                conn.commit()
-            finally:
-                cursor.close()
-                conn.close()
-
-        db_retry(operation)
+        create_user(name, email, password)
     except db_integrity_errors():
         return render_template(
             "register.html",
@@ -1459,12 +1655,40 @@ def login():
     return render_template("login.html", error="Invalid email or password.", email=email)
 
 
+@app.route("/login/google", methods=["POST"])
+def google_login():
+    data = request.get_json(silent=True) or request.form
+    credential = (data.get("credential") or "").strip()
+    if not credential:
+        return jsonify({"error": "Google sign-in did not return a credential."}), 400
+
+    try:
+        profile = verify_google_id_token(credential)
+        user = get_or_create_google_user(profile)
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except db_errors() as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    login_user_session(user, normalize_email(user.get("email") or profile["email"]))
+    token = create_jwt(
+        {
+            "sub": str(user.get("id")),
+            "email": normalize_email(user.get("email") or profile["email"]),
+            "name": session.get("user_name") or profile["name"],
+            "scope": "transcriptions:read transcriptions:write",
+        }
+    )
+    response = make_response(jsonify({"redirect_url": url_for("dashboard")}))
+    return set_auth_cookie(response, token)
+
+
 @app.route("/dashboard")
 def dashboard():
     if "user_email" not in session:
         return redirect(url_for("login_page"))
 
-    context = dashboard_context(session["user_email"])
+    context = dashboard_context(current_user_id(), current_user_email())
     return render_template(
         "dashboard.html",
         language_options=LANGUAGE_OPTIONS,
@@ -1479,7 +1703,7 @@ def history():
         return redirect(url_for("login_page"))
 
     try:
-        records = get_history(session["user_email"], limit=100)
+        records = get_history(current_user_id(), current_user_email(), limit=100)
         db_error = None
     except db_errors() as exc:
         records = []
@@ -1511,7 +1735,7 @@ def upload():
             supported = ", ".join(sorted(ALLOWED_UPLOAD_EXTENSIONS))
             return jsonify({"error": f"Unsupported file type. Supported formats: {supported}."}), 400
 
-        job_id = create_job(session["user_email"], original_filename)
+        job_id = create_job(current_user_id(), current_user_email(), original_filename)
         audio_filename = f"{job_id}_{original_filename}"
         audio_path = os.path.join(AUDIO_FOLDER, audio_filename)
         file.save(audio_path)
@@ -1532,7 +1756,8 @@ def upload():
                 audio_path,
                 audio_filename,
                 original_filename,
-                session["user_email"],
+                current_user_id(),
+                current_user_email(),
                 forced_language,
                 target_translation_language,
             ),
@@ -1557,7 +1782,10 @@ def job_status(job_id):
         return jsonify({"error": "Please log in again."}), 401
 
     job = get_job(job_id)
-    if not job or job.get("user_email") != session["user_email"]:
+    if not job or (
+        job.get("user_id") != current_user_id()
+        and normalize_email(job.get("user_email")) != current_user_email()
+    ):
         abort(404)
 
     return jsonify(
@@ -1577,7 +1805,8 @@ def transcription_result(job_id):
     if "user_email" not in session:
         return redirect(url_for("login_page"))
 
-    record = get_transcription_by_job(job_id, record_access_email())
+    user_id, user_email = record_access_identity()
+    record = get_transcription_by_job(job_id, user_id, user_email)
     if not record:
         abort(404)
 
@@ -1602,7 +1831,8 @@ def ask_transcript(job_id):
     if "user_email" not in session:
         return jsonify({"error": "Please log in again."}), 401
 
-    record = get_transcription_by_job(job_id, record_access_email())
+    user_id, user_email = record_access_identity()
+    record = get_transcription_by_job(job_id, user_id, user_email)
     if not record:
         abort(404)
 
@@ -1652,17 +1882,36 @@ def download_file(filetype, filename):
                     (filename,),
                 )
             else:
-                cursor.execute(
-                    adapt_sql(
-                        f"""
-                    SELECT id
-                    FROM transcriptions
-                    WHERE LOWER(user_email) = LOWER(%s) AND {column} = %s
-                    LIMIT 1
-                    """
-                    ),
-                    (session["user_email"], filename),
-                )
+                user_id = current_user_id()
+                user_email = current_user_email()
+                if user_id:
+                    cursor.execute(
+                        adapt_sql(
+                            f"""
+                        SELECT id
+                        FROM transcriptions
+                        WHERE {column} = %s
+                          AND (
+                              user_id = %s
+                              OR (user_id IS NULL AND LOWER(user_email) = LOWER(%s))
+                          )
+                        LIMIT 1
+                        """
+                        ),
+                        (filename, user_id, user_email),
+                    )
+                else:
+                    cursor.execute(
+                        adapt_sql(
+                            f"""
+                        SELECT id
+                        FROM transcriptions
+                        WHERE LOWER(user_email) = LOWER(%s) AND {column} = %s
+                        LIMIT 1
+                        """
+                        ),
+                        (user_email, filename),
+                    )
             return row_to_dict(cursor.fetchone())
         finally:
             cursor.close()
@@ -1691,6 +1940,7 @@ def health():
             "transcription_backend": transcription_backend(),
             "groq_configured": bool(os.getenv("GROQ_API_KEY")),
             "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+            "google_configured": bool(google_client_id()),
             "show_all_transcriptions": show_all_transcriptions(),
         }
     )
