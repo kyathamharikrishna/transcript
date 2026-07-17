@@ -362,6 +362,12 @@ h3 {
   color: #ffd8e1;
 }
 
+.alert-success {
+  border: 1px solid rgba(58, 214, 157, 0.42);
+  background: rgba(58, 214, 157, 0.13);
+  color: #d9fff0;
+}
+
 .hidden {
   display: none !important;
 }

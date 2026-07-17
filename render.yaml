@@ -14,6 +14,8 @@ services:
     envVars:
       - key: FLASK_SECRET_KEY
         generateValue: true
+      - key: JWT_COOKIE_SECURE
+        value: "1"
       - key: DB_BACKEND
         value: sqlite
       - key: PERSISTENT_DATA_DIR

@@ -83,10 +83,8 @@
   <div class="profile-grid">
     <div><span>Detected language</span><strong>{{ speaker_profile.detected_language or stats.detected_language or "Unknown" }}</strong></div>
     <div><span>Speaking pace</span><strong>{{ speaker_profile.pace_label or "Unknown" }}</strong><small>{{ speaker_profile.speaking_rate_wpm or 0 }} WPM</small></div>
-    <div><span>Age from voice</span><strong>{{ speaker_profile.age_estimate or "Not inferred from voice" }}</strong></div>
-    <div><span>Age accuracy</span><strong>{{ speaker_profile.age_accuracy or "Not available" }}</strong></div>
   </div>
-  <p class="muted profile-note">{{ speaker_profile.privacy_note or "The app reports language and pace, but does not guess age from voice." }}</p>
+  <p class="muted profile-note">{{ speaker_profile.privacy_note or "The app reports language, speaking pace, keywords, and confidence signals for review." }}</p>
 </section>
 
 <section class="panel reveal">

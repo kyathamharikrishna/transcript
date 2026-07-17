@@ -200,12 +200,7 @@ def build_speaker_profile(segments, transcript, detected_language):
         "detected_language": detected_language,
         "speaking_rate_wpm": words_per_minute,
         "pace_label": pace,
-        "age_estimate": "Not inferred from voice",
-        "age_accuracy": "Not available",
-        "privacy_note": (
-            "The app reports detected language and speaking pace. "
-            "It does not guess age from a person's voice because that estimate is not reliable enough for production."
-        ),
+        "privacy_note": "The app reports detected language, speaking pace, keywords, and confidence signals for review.",
     }
 
 

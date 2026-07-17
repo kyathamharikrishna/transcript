@@ -35,6 +35,9 @@
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
+    {% if success %}
+    <div class="alert alert-success">{{ success }}</div>
+    {% endif %}
 
     <form method="POST" action="{{ url_for('login') }}" class="stack-form">
       <label>Email</label>

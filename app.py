@@ -1,4 +1,8 @@
 from datetime import datetime
+import base64
+import binascii
+import hashlib
+import hmac
 import importlib.util
 import json
 import mimetypes
@@ -16,6 +20,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    make_response,
     send_from_directory,
     session,
     url_for,
@@ -44,6 +49,9 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-key")
 app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "100")) * 1024 * 1024
 
+JWT_COOKIE_NAME = "tf_access_token"
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_SECONDS = int(os.getenv("JWT_EXPIRY_DAYS", "7")) * 24 * 60 * 60
 DATA_ROOT = os.getenv("PERSISTENT_DATA_DIR", "uploads")
 BASE_FOLDER = os.path.join(DATA_ROOT, "transcriber")
 AUDIO_FOLDER = os.path.join(BASE_FOLDER, "audio")
@@ -169,6 +177,85 @@ def normalize_password(password):
 
 def show_all_transcriptions():
     return os.getenv("SHOW_ALL_TRANSCRIPTIONS", "1").lower() in {"1", "true", "yes", "all"}
+
+
+def jwt_secret():
+    return os.getenv("JWT_SECRET_KEY") or app.secret_key
+
+
+def _b64url_encode(value):
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _b64url_decode(value):
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(value + padding)
+
+
+def create_jwt(payload):
+    now = int(time.time())
+    claims = {
+        "iat": now,
+        "exp": now + JWT_EXPIRY_SECONDS,
+        **payload,
+    }
+    header = {"alg": JWT_ALGORITHM, "typ": "JWT"}
+    signing_input = ".".join(
+        [
+            _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8")),
+            _b64url_encode(json.dumps(claims, separators=(",", ":")).encode("utf-8")),
+        ]
+    )
+    signature = hmac.new(jwt_secret().encode("utf-8"), signing_input.encode("ascii"), hashlib.sha256).digest()
+    return f"{signing_input}.{_b64url_encode(signature)}"
+
+
+def decode_jwt(token):
+    try:
+        header_part, payload_part, signature_part = token.split(".")
+        signing_input = f"{header_part}.{payload_part}"
+        expected = hmac.new(jwt_secret().encode("utf-8"), signing_input.encode("ascii"), hashlib.sha256).digest()
+        actual = _b64url_decode(signature_part)
+        if not hmac.compare_digest(expected, actual):
+            return None
+
+        header = json.loads(_b64url_decode(header_part))
+        if header.get("alg") != JWT_ALGORITHM:
+            return None
+
+        claims = json.loads(_b64url_decode(payload_part))
+        if int(claims.get("exp", 0)) < int(time.time()):
+            return None
+        if not claims.get("sub"):
+            return None
+        return claims
+    except (ValueError, TypeError, json.JSONDecodeError, binascii.Error, UnicodeDecodeError):
+        return None
+
+
+def jwt_from_request():
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        return auth_header.split(" ", 1)[1].strip()
+    return request.cookies.get(JWT_COOKIE_NAME)
+
+
+def set_auth_cookie(response, token):
+    secure_cookie = os.getenv("JWT_COOKIE_SECURE", "0").lower() in {"1", "true", "yes"}
+    response.set_cookie(
+        JWT_COOKIE_NAME,
+        token,
+        max_age=JWT_EXPIRY_SECONDS,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="Lax",
+    )
+    return response
+
+
+def clear_auth_cookie(response):
+    response.delete_cookie(JWT_COOKIE_NAME)
+    return response
 
 
 def is_database_locked_error(exc):
@@ -884,7 +971,6 @@ Decision Signals: {insights.get('decision_count', 0)}
 Low Confidence Words: {insights.get('low_confidence_words', 0)}
 Top Keywords: {keywords}
 Speaking Pace: {speaker_profile.get('pace_label', 'Unknown')} ({speaker_profile.get('speaking_rate_wpm', 0)} WPM)
-Age From Voice: Not inferred
 
 ========== SUMMARY ==========
 
@@ -1157,6 +1243,42 @@ def login_user_session(user, email, password=None):
         update_user_password_hash(email, password)
 
 
+def authenticated_redirect(user, email, password=None, endpoint="dashboard"):
+    login_user_session(user, email, password)
+    token = create_jwt(
+        {
+            "sub": email,
+            "name": session.get("user_name") or email.split("@")[0],
+            "scope": "transcriptions:read transcriptions:write",
+        }
+    )
+    response = make_response(redirect(url_for(endpoint)))
+    return set_auth_cookie(response, token)
+
+
+@app.before_request
+def load_user_from_jwt():
+    if session.get("user_email"):
+        return
+
+    token = jwt_from_request()
+    if not token:
+        return
+
+    claims = decode_jwt(token)
+    if not claims:
+        return
+
+    session["user_email"] = normalize_email(claims.get("sub"))
+    session["user_name"] = claims.get("name") or session["user_email"].split("@")[0]
+
+
+def record_access_email():
+    if show_all_transcriptions():
+        return None
+    return session.get("user_email")
+
+
 def fetch_user_by_email(email):
     users = fetch_users_by_email(email)
     return users[0] if users else None
@@ -1202,33 +1324,6 @@ def update_user_password_hash(email, password):
     return db_retry(operation)
 
 
-def refresh_existing_user_account(email, name, password):
-    def operation():
-        ensure_database_schema()
-        conn = get_db_connection()
-        cursor = get_cursor(conn)
-        try:
-            cursor.execute(
-                adapt_sql(
-                    """
-                    UPDATE users
-                    SET name = %s, password = %s
-                    WHERE id = (
-                        SELECT id FROM users WHERE LOWER(email) = LOWER(%s) ORDER BY id DESC LIMIT 1
-                    )
-                    """
-                ),
-                (name, generate_password_hash(password), email),
-            )
-            conn.commit()
-        finally:
-            cursor.close()
-            conn.close()
-
-    db_retry(operation)
-    return fetch_user_by_email(email)
-
-
 @app.errorhandler(413)
 def file_too_large(error):
     message = f"File is too large. Maximum upload size is {app.config['MAX_CONTENT_LENGTH'] // (1024 * 1024)}MB."
@@ -1255,7 +1350,12 @@ def internal_server_error(error):
 def login_page():
     if "user_email" in session:
         return redirect(url_for("dashboard"))
-    return render_template("login.html")
+    registered = request.args.get("registered") == "1"
+    return render_template(
+        "login.html",
+        email=normalize_email(request.args.get("email")),
+        success="Registration complete. Please log in with your new credentials." if registered else None,
+    )
 
 
 @app.route("/register", methods=["GET"])
@@ -1267,24 +1367,35 @@ def register_page():
 
 @app.route("/register", methods=["POST"])
 def register():
-    name = request.form["name"].strip()
-    email = normalize_email(request.form["email"])
-    raw_password = normalize_password(request.form["password"])
+    name = (request.form.get("name") or "").strip()
+    email = normalize_email(request.form.get("email"))
+    raw_password = normalize_password(request.form.get("password"))
+
+    if not name or not email or not raw_password:
+        return render_template(
+            "register.html",
+            error="Please enter your name, email, and password.",
+            name=name,
+            email=email,
+        )
+    if len(raw_password) < 6:
+        return render_template(
+            "register.html",
+            error="Password must be at least 6 characters.",
+            name=name,
+            email=email,
+        )
+
     password = generate_password_hash(raw_password)
 
     try:
-        existing_users = fetch_users_by_email(email)
-        matching_user = next(
-            (user for user in existing_users if password_matches(user.get("password"), raw_password)),
-            None,
-        )
-        if matching_user:
-            login_user_session(matching_user, email, raw_password)
-            return redirect(url_for("dashboard"))
-        if existing_users:
-            refreshed_user = refresh_existing_user_account(email, name, raw_password)
-            login_user_session(refreshed_user or {"name": name, "password": password}, email)
-            return redirect(url_for("dashboard"))
+        if fetch_users_by_email(email):
+            return render_template(
+                "register.html",
+                error="This email is already registered. Please log in with your existing credentials.",
+                name=name,
+                email=email,
+            )
 
         def operation():
             ensure_database_schema()
@@ -1302,13 +1413,12 @@ def register():
 
         db_retry(operation)
     except db_integrity_errors():
-        existing_user = find_matching_user(email, raw_password)
-        if existing_user and password_matches(existing_user.get("password"), raw_password):
-            login_user_session(existing_user, email, raw_password)
-            return redirect(url_for("dashboard"))
-        refreshed_user = refresh_existing_user_account(email, name, raw_password)
-        login_user_session(refreshed_user or {"name": name, "password": password}, email)
-        return redirect(url_for("dashboard"))
+        return render_template(
+            "register.html",
+            error="This email is already registered. Please log in with your existing credentials.",
+            name=name,
+            email=email,
+        )
     except db_errors() as exc:
         return render_template(
             "register.html",
@@ -1317,8 +1427,7 @@ def register():
             email=email,
         )
 
-    login_user_session({"name": name, "password": password}, email)
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("login_page", registered="1", email=email))
 
 
 @app.route("/login", methods=["POST"])
@@ -1336,8 +1445,7 @@ def login():
         )
 
     if user:
-        login_user_session(user, email, password)
-        return redirect(url_for("dashboard"))
+        return authenticated_redirect(user, email, password)
 
     return render_template("login.html", error="Invalid email or password.", email=email)
 
@@ -1460,7 +1568,7 @@ def transcription_result(job_id):
     if "user_email" not in session:
         return redirect(url_for("login_page"))
 
-    record = get_transcription_by_job(job_id, session["user_email"])
+    record = get_transcription_by_job(job_id, record_access_email())
     if not record:
         abort(404)
 
@@ -1484,7 +1592,7 @@ def ask_transcript(job_id):
     if "user_email" not in session:
         return jsonify({"error": "Please log in again."}), 401
 
-    record = get_transcription_by_job(job_id, session["user_email"])
+    record = get_transcription_by_job(job_id, record_access_email())
     if not record:
         abort(404)
 
@@ -1580,8 +1688,9 @@ def health():
 
 @app.route("/logout")
 def logout():
+    response = make_response(redirect(url_for("login_page")))
     session.clear()
-    return redirect(url_for("login_page"))
+    return clear_auth_cookie(response)
 
 
 if __name__ == "__main__":

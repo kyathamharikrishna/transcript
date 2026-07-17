@@ -83,6 +83,7 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 - **Timestamped transcript with speaker labels** — every Whisper segment is displayed like `[00:01:23] Speaker 1: ...`.
 - **Keyword and action item extractor** — deadline, todo, follow-up, budget, and decision phrases are pulled into a separate action panel.
 - **Q&A on transcript** — users can ask questions about their own transcript. If `ANTHROPIC_API_KEY` is configured, Claude answers with retrieved transcript context; otherwise a local retrieval fallback answers from matching transcript sections.
+- **JWT authentication** — login issues an HTTP-only signed token, registration returns users to Login, and returning users can access persisted history after authentication.
 
 ### Tier 2
 
@@ -98,7 +99,7 @@ If uploads fail with `insufficient_quota`, the code is working but the configure
 - **Audio and transcript stats** — duration, word count, processing time, language, and action counts.
 - **Copy-to-clipboard buttons** — copy transcript and summary in one click.
 - **Confidence highlights** — low-confidence Whisper words are highlighted so users can review uncertain text.
-- **Voice-safe speaker profile** — shows detected language and speaking pace, and clearly avoids unreliable age guessing from voice.
+- **Voice-safe speaker profile** — shows detected language, speaking pace, keywords, and confidence signals.
 
 ### Frontend Experience
 
@@ -232,6 +233,8 @@ transcript/
 - `PERSISTENT_DATA_DIR` — base folder for uploads and generated files; set to `/var/data` on Render with a persistent disk
 - `SQLITE_DB_PATH` — SQLite database path when `DB_BACKEND=sqlite`
 - `SHOW_ALL_TRANSCRIPTIONS` — defaults to `1`, showing all saved project transcriptions in dashboard/history
+- `JWT_EXPIRY_DAYS` — signed login token lifetime, default `7`
+- `JWT_COOKIE_SECURE` — set `1` on HTTPS deployments such as Render
 - `TRANSCRIPTION_BACKEND` — use `whisper` for local transcription, `openai` for Render live transcription, or `auto` to choose automatically
 - `OPENAI_API_KEY` — required when `TRANSCRIPTION_BACKEND=openai`
 - `OPENAI_FALLBACK_TO_WHISPER` — set `1` only on deployments that install Whisper/Torch and have enough memory for local fallback
@@ -246,7 +249,7 @@ transcript/
 
 ## Speaker Analytics Note
 
-The app intentionally does not infer a person's age from voice. That guess is unreliable in real products. Instead, TranscribeFlow reports safe, useful signals: detected language, speaking pace, low-confidence words, and top keywords.
+TranscribeFlow reports safe, useful signals: detected language, speaking pace, low-confidence words, and top keywords.
 
 ## License
 
